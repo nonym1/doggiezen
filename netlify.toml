@@ -1,0 +1,17 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+# The game (public/index.html) calls fetch('' + '/api/...') — same-origin, relative — so
+# this redirect is what actually makes /api/* reach the Express app in server.js (via
+# netlify/functions/api.js). status = 200 (a rewrite, not a redirect) keeps the URL the
+# browser sees as /api/... instead of bouncing it to /.netlify/functions/api/....
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/api/health"
+  status = 200

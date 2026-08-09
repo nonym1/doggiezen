@@ -1,0 +1,27 @@
+{
+  "name": "doggiezen-backend",
+  "version": "2.1.0",
+  "description": "Backend for DoggieZen: Telegram initData verification, player state, run anti-cheat, missions, leaderboard, referrals",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-logic.js && node test-integration.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "@netlify/blobs": "^8.1.0",
+    "serverless-http": "^3.2.0"
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "better-sqlite3": "^11.3.0"
+  }
+}

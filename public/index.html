@@ -1,0 +1,2829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>DoggieZen — Fly. Earn. $DOGZ.</title>
+<meta name="description" content="A candlestick-dodging flyer for Telegram. Tap to flap, clear the candles, earn $DOGZ.">
+<meta name="theme-color" content="#1A120A">
+<!-- Open Graph / social share preview. og-preview.png (1200x630) ships in this folder —
+     TODO: once deployed, replace the domain below (og:url / og:image / twitter:image) with
+     your real hosted domain. Social scrapers require an absolute URL, so a relative path
+     won't work here even though the file itself is ready. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="DoggieZen — Fly. Earn. $DOGZ.">
+<meta property="og:description" content="A candlestick-dodging flyer for Telegram. Tap to flap, clear the candles, earn $DOGZ.">
+<meta property="og:url" content="https://doggiezen.netlify.app/">
+<meta property="og:image" content="https://doggiezen.netlify.app/og-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DoggieZen — Fly. Earn. $DOGZ.">
+<meta name="twitter:description" content="A candlestick-dodging flyer for Telegram. Tap to flap, clear the candles, earn $DOGZ.">
+<meta name="twitter:image" content="https://doggiezen.netlify.app/og-preview.png">
+<!-- PWA manifest + icons. icon-192.png, icon-512.png, and icon-512-maskable.png ship in this
+     folder, wired up in manifest.json — nothing left to add here. -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- TonConnect UI: wallet-connect + payment flow for Zen Pass (see TONCONNECT_MANIFEST_URL
+     and the Zen Pass block further down). Loaded from a CDN since this project has no
+     bundler — exposes a global window.TON_CONNECT_UI. -->
+<script src="https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js"></script>
+<style>
+  html, body, * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input, textarea {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+  }
+  :root{
+    --ink:        #1A120A;
+    --ink-2:      #241A0E;
+    --ink-3:      #2E2211;
+    --line:       rgba(242,185,58,0.18);
+    --gold:       #F2B93A;
+    --gold-hi:    #FFDD82;
+    --gold-deep:  #B8791A;
+    --coral:      #E8432E;
+    --jade:       #5FBF8F;
+    --jade-deep:  #2E7D5B;
+    --paper:      #FFF3DD;
+    --mist:       #C9A98A;
+    --mist-dim:   #8A7360;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:#05060A; touch-action:manipulation; }
+  body{ font-family:'Inter',sans-serif; }
+  .num{ font-family:'JetBrains Mono', monospace; font-feature-settings:"tnum" 1; }
+
+  /* ---------- custom icon set (replaces emoji) ---------- */
+  .ic svg, .icBox svg, .trophyBadge svg, #crest svg, .avatarBig svg, .lbAvatar svg, .loadingMark svg, .tutorialIc svg {
+    fill: currentColor; display:block;
+  }
+  .ic svg{ width:19px; height:19px; }
+  .icBox svg{ width:17px; height:17px; color:var(--gold); }
+  .trophyBadge svg{ width:11px; height:11px; color:var(--paper); }
+  #crest svg{ width:32px; height:32px; color:var(--gold); }
+  .avatarBig svg{ width:30px; height:30px; color:var(--paper); }
+  .lbAvatar svg{ width:18px; height:18px; color:var(--paper); }
+  .loadingMark svg{ width:30px; height:30px; color:var(--gold); }
+  .tutorialIc svg{ width:18px; height:18px; color:var(--mist); }
+
+  #stage{
+    height:100%; display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 50% -10%, rgba(232,184,75,0.10), transparent 55%),
+      #05060A;
+  }
+  #app {
+    position:relative; width:100%; height:100%; max-width:460px;
+    background:var(--ink); overflow:hidden;
+    box-shadow: 0 0 0 1px rgba(232,184,75,0.08), 0 40px 90px rgba(0,0,0,0.65);
+  }
+  @media (min-width:461px){
+    #app{ height:min(100%, 900px); border-radius:28px; }
+  }
+
+  canvas {
+    position:absolute; inset:0; width:100%; height:100%;
+    background: linear-gradient(180deg,#FBEBC9 0%, #F6D9A8 22%, #EFC489 42%, #D9A76B 62%, #B9855A 100%);
+  }
+  #vignette{
+    position:absolute; inset:0; pointer-events:none; z-index:2;
+    background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(5,6,10,0.55) 100%);
+  }
+
+  /* ---------- top bar ---------- */
+  #topbar {
+    position:absolute; top:0; left:0; right:0;
+    padding:calc(14px + env(safe-area-inset-top)) 14px 0;
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    z-index:5;
+  }
+  .pill {
+    background:rgba(16,18,26,0.62); border:1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    color:var(--paper); font-weight:700; font-size:13.5px;
+    padding:7px 14px 7px 8px; border-radius:100px; display:flex; align-items:center; gap:7px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+    letter-spacing:.2px;
+  }
+  .dogzCoin{
+    width:19px; height:19px; border-radius:50%; flex-shrink:0;
+    background: radial-gradient(circle at 32% 28%, var(--gold-hi), var(--gold) 55%, var(--gold-deep) 100%);
+    border:1px solid #7a541a;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.65), inset 0 -2px 3px rgba(120,80,10,0.5);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Fredoka',sans-serif; font-size:10px; font-weight:800; color:#5c3d0d;
+  }
+  .trophyBadge{
+    width:19px; height:19px; border-radius:6px; flex-shrink:0;
+    background:linear-gradient(155deg,#F2653F,#B8301C);
+    border:1px solid #7a2a15;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.35);
+    display:flex; align-items:center; justify-content:center; font-size:11px;
+  }
+  .topbarRight{ display:flex; align-items:center; gap:8px; }
+  .iconBtn{
+    width:34px; height:34px; padding:0; flex-shrink:0; cursor:pointer;
+    background:rgba(16,18,26,0.62); border:1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    color:var(--paper);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .iconBtn svg{ width:17px; height:17px; }
+  .iconBtn[aria-pressed="false"]{ color:var(--mist-dim); }
+
+  #liveScore {
+    position:absolute; top:18px; left:0; right:0; text-align:center; z-index:4;
+    color:var(--paper); font-family:'Fredoka',sans-serif; font-weight:800; font-size:44px;
+    pointer-events:none; letter-spacing:1px;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.25), 0 10px 24px rgba(0,0,0,0.35);
+    display:none;
+  }
+
+  /* ---------- home screen ---------- */
+  #homeScreen {
+    position:absolute; inset:0; z-index:3;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    padding:32px 26px calc(96px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(10,11,16,0) 0%, rgba(10,11,16,0.08) 45%, rgba(8,9,14,0.86) 78%, rgba(6,7,11,0.96) 100%);
+  }
+  #homeScreen.hidden { display:none; }
+  #crest{
+    width:64px; height:64px; margin-bottom:14px; border-radius:18px;
+    background: linear-gradient(155deg, var(--ink-3), var(--ink-2));
+    border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:30px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  #logo {
+    font-family:'Fredoka',sans-serif; font-size:33px; font-weight:800; text-align:center;
+    letter-spacing:0.5px; margin-bottom:6px;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-deep));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter: drop-shadow(0 6px 18px rgba(232,184,75,0.25));
+  }
+  #logoSub { color:var(--mist); font-size:13.5px; margin-bottom:26px; text-align:center; font-weight:500; }
+  #logoSub b{ color:var(--gold); font-weight:700; }
+  .bigBtn {
+    position:relative; overflow:hidden;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, #C99530);
+    border:none; color:#3A2606; font-family:'Fredoka',sans-serif; font-weight:700; font-size:17px;
+    padding:16px 0; width:100%; max-width:280px; border-radius:16px;
+    box-shadow: 0 2px 0 #7a541a inset, 0 10px 26px rgba(232,184,75,0.35);
+    cursor:pointer; transition: transform .08s ease;
+    letter-spacing:0.4px;
+  }
+  .bigBtn:active { transform: translateY(2px) scale(0.99); }
+  #tapHint { margin-top:14px; color:var(--mist-dim); font-size:12px; font-weight:500; letter-spacing:.3px; }
+
+  /* ---------- game over card ---------- */
+  #gameOverCard {
+    position:absolute; inset:0; z-index:6; display:none;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(6,7,11,0.72); backdrop-filter:blur(4px); padding:24px; text-align:center;
+  }
+  #gameOverCard.show { display:flex; }
+  #tutorialCard {
+    position:absolute; inset:0; z-index:7; display:none;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(6,7,11,0.78); backdrop-filter:blur(4px); padding:24px; text-align:left;
+  }
+  #tutorialCard.show { display:flex; }
+  #tutorialCard .card h2{ text-align:center; margin-bottom:16px; }
+  .tutorialRow {
+    display:flex; align-items:center; gap:12px; font-size:13px; color:var(--mist);
+    font-weight:500; line-height:1.4; margin:12px 0;
+  }
+  .tutorialRow b{ color:var(--paper); }
+  .tutorialIc{ flex-shrink:0; width:22px; height:18px; display:flex; align-items:center; justify-content:center; }
+  .card {
+    background: linear-gradient(165deg, var(--ink-3), var(--ink-2));
+    border:1px solid var(--line); border-radius:22px;
+    padding:26px 24px; width:100%; max-width:300px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .card h2 {
+    font-family:'Fredoka',sans-serif; color:var(--coral); font-size:13px; font-weight:700;
+    letter-spacing:2.5px; margin-bottom:14px; text-transform:uppercase;
+  }
+  .statRow { display:flex; justify-content:space-between; align-items:center; font-size:14px; color:var(--mist); margin:9px 0; font-weight:600; }
+  .statRow .num{ color:var(--paper); font-size:17px; font-weight:700; }
+  .rewardRow {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:rgba(232,184,75,0.10); border:1px solid rgba(232,184,75,0.28);
+    border-radius:12px; padding:10px; margin-top:14px; font-size:14px; color:var(--gold); font-weight:700;
+  }
+  .cardBtns { display:flex; gap:10px; margin-top:18px; }
+  .smallBtn {
+    position:relative; overflow:hidden;
+    flex:1; background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, #C99530);
+    border:none; color:#3A2606; font-family:'Fredoka',sans-serif;
+    font-weight:700; font-size:13.5px; padding:12px; border-radius:13px; cursor:pointer;
+    box-shadow: 0 8px 18px rgba(232,184,75,0.3);
+  }
+  .smallBtn.secondary {
+    background:transparent; border:1px solid rgba(255,255,255,0.16); color:var(--mist);
+    box-shadow:none;
+  }
+  .smallBtn:active { transform: translateY(2px); }
+  .smallBtn:disabled, .bigBtn:disabled {
+    opacity:.65; cursor:not-allowed; pointer-events:none;
+  }
+  .btnSpinner{
+    display:inline-block; width:15px; height:15px; border-radius:50%;
+    border:2.5px solid rgba(58,38,6,0.3); border-top-color:#3A2606;
+    animation: btnSpin .6s linear infinite; vertical-align:-3px;
+  }
+  .smallBtn.secondary .btnSpinner{ border-color:rgba(201,169,138,0.3); border-top-color:var(--mist); }
+  @keyframes btnSpin{ to{ transform:rotate(360deg); } }
+
+  /* ---------- bottom nav ---------- */
+  #bottomNav {
+    position:absolute; left:0; right:0; bottom:0; z-index:5;
+    display:flex; justify-content:space-around; align-items:center;
+    background:rgba(13,14,20,0.86); border-top:1px solid var(--line);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    padding:9px 4px calc(9px + env(safe-area-inset-bottom));
+  }
+  #bottomNav.hidden { display:none; }
+  .navBtn {
+    background:none; border:none; display:flex; flex-direction:column; align-items:center;
+    gap:3px; color:var(--mist-dim); font-size:10px; font-weight:600; cursor:pointer; flex:1;
+    padding:6px 2px; border-radius:12px; transition: background .15s, color .15s;
+  }
+  .navBtn .ic {
+    font-size:19px; width:34px; height:28px; display:flex; align-items:center; justify-content:center;
+    border-radius:10px; transition: background .15s;
+  }
+  .navBtn.active { color:var(--gold); }
+  .navBtn.active .ic{ background:rgba(232,184,75,0.14); }
+
+  /* ---------- modal panels ---------- */
+  #modalBackdrop {
+    position:absolute; inset:0; z-index:10; background:rgba(4,5,8,0.62);
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  #modalBackdrop.show { display:flex; }
+  #modalPanel {
+    width:100%; max-height:84%; background:var(--ink-2);
+    border-radius:24px 24px 0 0; border-top:1px solid var(--line);
+    padding:18px 16px 22px; overflow-y:auto;
+    animation: slideUp .25s cubic-bezier(.2,.8,.2,1);
+    box-shadow: 0 -20px 50px rgba(0,0,0,0.5);
+  }
+  @keyframes slideUp { from { transform:translateY(24px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+  #modalPanel::-webkit-scrollbar{ width:0; }
+  .modalHead { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .modalHead h2 {
+    font-family:'Fredoka',sans-serif; color:var(--paper); font-size:18px; font-weight:700;
+    display:flex; align-items:center; gap:9px; letter-spacing:.2px;
+  }
+  .modalHead .icBox{
+    width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(155deg, var(--ink-3), var(--ink-2)); border:1px solid var(--line); font-size:16px;
+  }
+  .closeX {
+    background:var(--ink-3); color:var(--mist); border:1px solid var(--line);
+    width:30px; height:30px; border-radius:50%; font-size:14px; font-weight:bold; cursor:pointer;
+  }
+  .subtext{ font-size:12px; color:var(--mist-dim); margin-bottom:10px; font-weight:500; }
+
+  /* shared surface card */
+  .row {
+    background:var(--ink-3); border-radius:16px; padding:13px; margin-bottom:9px;
+    border:1px solid rgba(255,255,255,0.05);
+  }
+
+  /* passes */
+  .passRow { display:flex; align-items:center; gap:12px; }
+  .passRow.locked{ opacity:0.5; }
+  .passRow .lvl {
+    width:40px; height:40px; border-radius:12px; flex-shrink:0;
+    background: linear-gradient(155deg, var(--gold-hi), var(--gold) 65%, var(--gold-deep));
+    color:#3A2606; font-family:'Fredoka',sans-serif; font-weight:800; display:flex; align-items:center; justify-content:center; font-size:13px;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.5);
+  }
+  .passRow.locked .lvl{ background:var(--ink); color:var(--mist-dim); box-shadow:none; }
+  .passRow .info { flex:1; min-width:0; }
+  .passRow .info b { display:block; color:var(--paper); font-size:14px; font-weight:700; font-family:'Fredoka',sans-serif; }
+  .passRow .info span { font-size:11.5px; color:var(--mist-dim); font-weight:500; }
+  .badge { background:rgba(232,184,75,0.14); color:var(--gold); font-size:11px; font-weight:700; padding:5px 10px; border-radius:8px; white-space:nowrap; }
+  .badge.done { background:rgba(95,191,143,0.16); color:var(--jade); }
+  .xpBarOuter { background:var(--ink); border-radius:8px; height:9px; overflow:hidden; margin:2px 0 16px; border:1px solid rgba(255,255,255,0.04); }
+  .xpBarInner { background:linear-gradient(90deg,var(--gold-deep),var(--gold)); height:100%; border-radius:8px; }
+
+  /* missions */
+  .missionTop { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+  .missionTop b { font-size:13.5px; color:var(--paper); font-weight:600; line-height:1.35; }
+  .missionBarOuter { background:var(--ink); border-radius:8px; height:7px; overflow:hidden; border:1px solid rgba(255,255,255,0.04); }
+  .missionBarInner { background:linear-gradient(90deg,var(--jade-deep),var(--jade)); height:100%; }
+  .missionReward { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--mist); margin-top:8px; font-weight:600; }
+
+  /* leaderboard */
+  .lbRow { display:flex; align-items:center; gap:11px; }
+  .lbRow.me { border-color:rgba(232,184,75,0.4); background:rgba(232,184,75,0.08); }
+  .lbRank {
+    width:26px; height:26px; border-radius:8px; font-family:'Fredoka',sans-serif; font-weight:800; font-size:12px;
+    display:flex; align-items:center; justify-content:center; color:var(--mist-dim); flex-shrink:0;
+  }
+  .lbRank.g1{ background:linear-gradient(155deg,#FFDD82,#F2B93A); color:#4a3308; }
+  .lbRank.g2{ background:linear-gradient(155deg,#E8ECF2,#B7BFCC); color:#3a4150; }
+  .lbRank.g3{ background:linear-gradient(155deg,#E7B486,#B9784A); color:#40260f; }
+  .lbAvatar {
+    width:34px; height:34px; border-radius:50%; flex-shrink:0;
+    background: linear-gradient(155deg,#F2653F,#B8301C); border:2px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; justify-content:center; font-size:16px;
+  }
+  .lbName { flex:1; font-size:13.5px; font-weight:600; color:var(--paper); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lbScore { font-size:14px; font-weight:700; color:var(--gold); }
+
+  /* referral */
+  .refBox {
+    background: linear-gradient(165deg, var(--ink-3), var(--ink-2));
+    border:1px dashed rgba(232,184,75,0.4); border-radius:18px; padding:18px; text-align:center; margin-bottom:14px;
+  }
+  .refCode {
+    font-family:'JetBrains Mono',monospace; font-size:21px; font-weight:700; letter-spacing:3px;
+    color:var(--gold); margin:8px 0 14px;
+  }
+  .statGrid { display:flex; gap:10px; margin-bottom:14px; }
+  .statBox { flex:1; text-align:center; }
+  .statBox b { display:block; font-family:'Fredoka',sans-serif; font-size:21px; color:var(--paper); font-weight:700; }
+  .statBox span { font-size:10.5px; color:var(--mist-dim); font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+  .fineprint{ font-size:11.5px; color:var(--mist-dim); text-align:center; line-height:1.5; font-weight:500; }
+
+  /* profile */
+  .profileHead { display:flex; align-items:center; gap:14px; margin-bottom:18px; }
+  .avatarBig {
+    width:60px; height:60px; border-radius:18px; flex-shrink:0;
+    background: linear-gradient(155deg,#F2653F,#B8301C); border:2px solid rgba(255,255,255,0.1);
+    display:flex; align-items:center; justify-content:center; font-size:28px;
+    box-shadow: 0 8px 18px rgba(240,117,74,0.25);
+  }
+  .profileStats { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pStat b { display:block; font-family:'Fredoka',sans-serif; font-size:19px; color:var(--paper); font-weight:700; }
+  .pStat span { font-size:11px; color:var(--mist-dim); font-weight:500; }
+
+  /* wallet */
+  .walletBalanceBox {
+    background: linear-gradient(165deg, var(--ink-3), var(--ink-2));
+    border:1px solid rgba(232,184,75,0.28); border-radius:18px; padding:20px 18px; text-align:center; margin-bottom:16px;
+  }
+  .walletBalanceBox .subtext{ margin-bottom:6px; }
+  .walletBalanceRow { display:flex; align-items:center; justify-content:center; gap:9px; }
+  .walletBalanceRow .dogzCoin{ width:26px; height:26px; font-size:13px; }
+  .walletBalanceRow b { font-family:'Fredoka',sans-serif; font-size:28px; color:var(--paper); font-weight:700; }
+  .walletSectionLabel { font-size:11.5px; color:var(--mist-dim); font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin:4px 2px 8px; }
+  .txRow { display:flex; align-items:center; gap:11px; }
+  .txIcon {
+    width:36px; height:36px; border-radius:11px; flex-shrink:0;
+    background:rgba(232,184,75,0.12); color:var(--gold);
+    display:flex; align-items:center; justify-content:center; font-size:16px;
+  }
+  .txInfo { flex:1; min-width:0; }
+  .txInfo b { display:block; font-size:13px; font-weight:600; color:var(--paper); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .txInfo span { font-size:11px; color:var(--mist-dim); font-weight:500; }
+  .txAmount { font-family:'Fredoka',sans-serif; font-size:14.5px; font-weight:700; color:var(--jade); white-space:nowrap; }
+
+  /* ---------- daily reward popup ---------- */
+  #dailyRewardCard {
+    position:absolute; inset:0; z-index:8; display:none;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(6,7,11,0.78); backdrop-filter:blur(4px); padding:24px; text-align:center;
+  }
+  #dailyRewardCard.show { display:flex; }
+  #dailyRewardCard .card h2{ color:var(--gold); }
+  .streakTrack { display:flex; gap:6px; justify-content:center; margin:14px 0 4px; }
+  .streakDay {
+    flex:1; max-width:32px; aspect-ratio:1; border-radius:9px; display:flex; align-items:center; justify-content:center;
+    background:var(--ink); border:1px solid rgba(255,255,255,0.06); font-size:10px; font-weight:700; color:var(--mist-dim);
+  }
+  .streakDay.done { background:linear-gradient(155deg, var(--gold-hi), var(--gold) 65%, var(--gold-deep)); color:#3A2606; border-color:transparent; }
+  .streakDay.today { border-color:var(--gold); color:var(--gold); box-shadow:0 0 0 2px rgba(232,184,75,0.18); }
+  .streakLabel { font-size:11.5px; color:var(--mist-dim); font-weight:600; margin-bottom:2px; }
+
+  /* ---------- tweet verification box ---------- */
+  .tweetBox { margin-top:10px; }
+  .tweetText {
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--paper); background:var(--ink);
+    border:1px dashed rgba(232,184,75,0.35); border-radius:10px; padding:10px; line-height:1.5; word-break:break-word;
+  }
+  .tweetUrlInput {
+    width:100%; margin-top:8px; background:var(--ink); border:1px solid var(--line); color:var(--paper);
+    font-size:12.5px; font-weight:500; padding:11px 12px; border-radius:11px; box-sizing:border-box;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .tweetUrlInput::placeholder{ color:var(--mist-dim); }
+  .tweetUrlInput:focus{ outline:none; border-color:var(--gold); }
+
+  #toast {
+    position:absolute; left:50%; bottom:92px; transform:translateX(-50%);
+    background:var(--ink-3); border:1px solid var(--line); color:var(--paper);
+    padding:10px 18px; border-radius:100px; font-size:12.5px; font-weight:600;
+    z-index:20; opacity:0; pointer-events:none; transition: opacity .25s, bottom .25s;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+  }
+  #toast.show { opacity:1; bottom:108px; }
+
+  /* ---------- loading screen ---------- */
+  #loadingOverlay{
+    position:absolute; inset:0; z-index:30; background:var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  }
+  .loadingMark{
+    width:60px; height:60px; border-radius:18px;
+    background: linear-gradient(155deg, var(--ink-3), var(--ink-2));
+    border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    animation: pulseMark 1.4s ease-in-out infinite;
+  }
+  @keyframes pulseMark{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.08); opacity:.7; } }
+  .loadingWord{
+    font-family:'Fredoka',sans-serif; font-size:21px; font-weight:700; letter-spacing:.5px;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-deep));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .loadingSub{ color:var(--mist-dim); font-size:12px; font-weight:500; }
+</style>
+</head>
+<body>
+<svg style="position:absolute;width:0;height:0;overflow:hidden;" aria-hidden="true">
+  <symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="15.6" rx="6" ry="5"/><ellipse cx="5.2" cy="9" rx="2.3" ry="2.9"/><ellipse cx="10.1" cy="5.5" rx="2.1" ry="2.7"/><ellipse cx="14.9" cy="5.5" rx="2.1" ry="2.7"/><ellipse cx="19.8" cy="9" rx="2.3" ry="2.9"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="2.1"/><circle cx="12" cy="12" r="4.7" fill="none" stroke="currentColor" stroke-width="2.1"/><circle cx="12" cy="12" r="1.6"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a1.6 1.6 0 0 0 0 3.2V15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a1.6 1.6 0 0 0 0-3.2V8z" fill="none" stroke="currentColor" stroke-width="2"/><line x1="14.5" y1="6.5" x2="14.5" y2="16.5" stroke="currentColor" stroke-width="2" stroke-dasharray="1.6 2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M7 5H4.5a2 2 0 0 0 0 4c.7 1 1.6 1.7 2.6 2.1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M17 5h2.5a2 2 0 0 1 0 4c-.7 1-1.6 1.7-2.6 2.1" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="10.4" y="12.4" width="3.2" height="3" /><rect x="8" y="16.9" width="8" height="2.2" rx="1.1"/></symbol>
+  <symbol id="i-invite" viewBox="0 0 24 24"><g opacity="0.55"><ellipse cx="7.6" cy="14.6" rx="4.2" ry="3.6"/><ellipse cx="3.9" cy="9.7" rx="1.5" ry="1.9"/><ellipse cx="7.5" cy="7" rx="1.4" ry="1.8"/><ellipse cx="11.1" cy="9.7" rx="1.5" ry="1.9"/></g><ellipse cx="16.4" cy="15.6" rx="4.2" ry="3.6"/><ellipse cx="12.7" cy="10.7" rx="1.5" ry="1.9"/><ellipse cx="16.3" cy="8" rx="1.4" ry="1.8"/><ellipse cx="19.9" cy="10.7" rx="1.5" ry="1.9"/></symbol>
+  <symbol id="i-dogface" viewBox="0 0 24 24"><path d="M4 9 L8 3 L10 8Z"/><path d="M20 9 L16 3 L14 8Z"/><circle cx="12" cy="13" r="7.4"/><circle cx="9" cy="12" r="1.15" fill="#241005"/><circle cx="15" cy="12" r="1.15" fill="#241005"/><ellipse cx="12" cy="15.3" rx="1.3" ry="1" fill="#241005"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4.5 6.7a2 2 0 0 1 2-2h10.3a2 2 0 0 1 2 2V8H6.5a1.9 1.9 0 0 0 0 3.8h12.3v6.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2V6.7z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="15.6" cy="13.7" r="1.15"/></symbol>
+  <symbol id="i-tap" viewBox="0 0 24 24"><circle cx="8.6" cy="15.4" r="3.3"/><path d="M13.6 10.3c1.7.9 2.8 2.7 2.8 4.7M16.3 7.4c2.9 1.5 4.9 4.6 4.9 8.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 4.3 20 17.8H4z"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 19.7 4 6.2h16z"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 12c1.8 0 1.8-4 3.6-4s1.8 4 3.6 4 1.8-4 3.6-4 1.8 4 3.6 4 1.8-4 3.6-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><circle cx="7" cy="17.5" r="2.6"/><circle cx="17" cy="15.5" r="2.6"/><path d="M9.6 17.5V6.2L19.6 4v11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-music-off" viewBox="0 0 24 24"><circle cx="7" cy="17.5" r="2.6"/><circle cx="17" cy="15.5" r="2.6"/><path d="M9.6 17.5V6.2L19.6 4v11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+</svg>
+<div id="stage">
+<div id="app">
+  <canvas id="game" width="440" height="800" role="img" aria-label="DoggieZen flight game — visual gameplay area, controlled by the Play button and Space key below" tabindex="-1"></canvas>
+  <div id="vignette"></div>
+  <div id="liveScore">0</div>
+
+  <div id="topbar">
+    <div class="pill" role="status" aria-label="$DOGZ balance"><span class="dogzCoin" aria-hidden="true">D</span><span class="num" id="coinTop">0</span></div>
+    <div class="topbarRight">
+      <div class="pill" role="status" aria-label="Best score"><span class="trophyBadge" aria-hidden="true"><svg><use href="#i-trophy"/></svg></span><span class="num" id="bestTop">0</span></div>
+      <button id="musicToggleBtn" class="iconBtn" type="button" aria-label="Toggle background music" aria-pressed="true" title="Toggle music">
+        <svg aria-hidden="true"><use href="#i-music" id="musicIconUse"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" role="status" aria-live="polite">
+    <div class="loadingMark" aria-hidden="true"><svg><use href="#i-dogface"/></svg></div>
+    <div class="loadingWord">DOGGIEZEN</div>
+    <div class="loadingSub">Warming up the trail…</div>
+  </div>
+
+  <div id="homeScreen">
+    <div id="crest" aria-hidden="true"><svg><use href="#i-dogface"/></svg></div>
+    <div id="logo">DOGGIEZEN</div>
+    <div id="logoSub">Glide through the candles. Earn <b>$DOGZ</b>.</div>
+    <button class="bigBtn" id="playBtn">PLAY</button>
+    <div id="tapHint">TAP · CLICK · SPACEBAR TO FLY</div>
+  </div>
+
+  <div id="gameOverCard" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
+    <div class="card">
+      <h2 id="gameOverTitle">Run Complete</h2>
+      <div class="statRow"><span>Score</span><span class="num" id="finalScore">0</span></div>
+      <div class="statRow"><span>Best</span><span class="num" id="finalBest">0</span></div>
+      <div class="rewardRow"><span class="dogzCoin" aria-hidden="true">D</span><span>+<span id="finalCoins">0</span> $DOGZ earned</span></div>
+      <div class="cardBtns">
+        <button class="smallBtn secondary" id="homeBtn">Home</button>
+        <button class="smallBtn" id="retryBtn">Retry</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tutorialCard" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle">
+    <div class="card">
+      <h2 id="tutorialTitle">How To Fly</h2>
+      <div class="tutorialRow"><span class="tutorialIc" aria-hidden="true"><svg><use href="#i-tap"/></svg></span><span>Tap, click, or press <b>Space</b> to flap and stay airborne.</span></div>
+      <div class="tutorialRow"><span class="tutorialIc" aria-hidden="true" style="color:#4CAF50"><svg><use href="#i-arrow-up"/></svg></span><span>Green (bull) candles give <b>+1 bonus $DOGZ</b> when cleared.</span></div>
+      <div class="tutorialRow"><span class="tutorialIc" aria-hidden="true" style="color:#F4432E"><svg><use href="#i-arrow-down"/></svg></span><span>Red (bear) candles are worth clearing too, just no bonus.</span></div>
+      <div class="tutorialRow"><span class="tutorialIc" aria-hidden="true"><svg><use href="#i-wave"/></svg></span><span>Some gaps drift up and down once you're warmed up — watch closely.</span></div>
+      <button class="smallBtn" id="tutorialGotIt" style="width:100%;margin-top:16px;">Got It — Let's Fly</button>
+    </div>
+  </div>
+
+  <div id="dailyRewardCard" role="dialog" aria-modal="true" aria-labelledby="dailyRewardTitle">
+    <div class="card">
+      <h2 id="dailyRewardTitle">Daily Reward</h2>
+      <div class="streakLabel" id="dailyRewardStreakLabel">Day streak</div>
+      <div class="streakTrack" id="dailyRewardTrack"></div>
+      <div class="rewardRow"><span class="dogzCoin" aria-hidden="true">D</span><span>+<span id="dailyRewardAmount">0</span> $DOGZ today</span></div>
+      <div class="cardBtns">
+        <button class="smallBtn" id="dailyRewardClaimBtn" style="width:100%">Claim</button>
+      </div>
+    </div>
+  </div>
+
+  <nav id="bottomNav" aria-label="Main">
+    <button class="navBtn" data-panel="missions"><span class="ic" aria-hidden="true"><svg><use href="#i-target"/></svg></span>Missions</button>
+    <button class="navBtn" data-panel="passes"><span class="ic" aria-hidden="true"><svg><use href="#i-ticket"/></svg></span>Pass</button>
+    <button class="navBtn active" data-panel="home" aria-current="page"><span class="ic" aria-hidden="true"><svg><use href="#i-paw"/></svg></span>Play</button>
+    <button class="navBtn" data-panel="wallet"><span class="ic" aria-hidden="true"><svg><use href="#i-wallet"/></svg></span>Wallet</button>
+    <button class="navBtn" data-panel="leaderboard"><span class="ic" aria-hidden="true"><svg><use href="#i-trophy"/></svg></span>Ranks</button>
+    <button class="navBtn" data-panel="referral"><span class="ic" aria-hidden="true"><svg><use href="#i-invite"/></svg></span>Invite</button>
+    <button class="navBtn" data-panel="profile"><span class="ic" aria-hidden="true"><svg><use href="#i-dogface"/></svg></span>Profile</button>
+  </nav>
+
+  <div id="modalBackdrop">
+    <div id="modalPanel" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+</div>
+
+<script>
+/* ===================== CANVAS GAME ===================== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+// W/H stay the fixed logical game-world size (440x800) that every draw call and physics
+// calculation below is written against — only the canvas' actual pixel backing store is
+// scaled up for high-DPI screens, via setupCanvasDPR(), so sprites stay crisp instead of
+// being stretched from a 1x buffer by CSS.
+const W = 440, H = 800;
+
+function setupCanvasDPR(){
+  // Cap at 2x even on 3x-DPR phones — full 3x means ~9x more pixels to rasterize every
+  // frame for a scene this busy (gradients, grain overlay, multiple sprites), which visibly
+  // drops frame rate on mid/low-end Android. 2x already looks sharp; going higher trades
+  // smoothness for a sharpness gain most players won't notice.
+  const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  // Reset (not multiply) the transform so every draw call can keep using plain 0..W / 0..H
+  // logical coordinates — the game logic never needs to know dpr exists.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+setupCanvasDPR();
+// devicePixelRatio can change at runtime (e.g. the window is dragged to a different-DPI
+// display, or the OS zoom level changes) — re-sync the backing store when that happens.
+// matchMedia's change event only fires once per listener since the query string itself
+// depends on the ratio, so each firing re-arms a fresh listener for the new ratio.
+function watchDPR(){
+  const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  mq.addEventListener?.('change', ()=>{ setupCanvasDPR(); watchDPR(); }, { once:true });
+}
+watchDPR();
+
+let coins = 0;
+let best = 0;
+let gamesPlayed = 0;
+let totalPipes = 0;
+let username = 'ZenPilot';
+let seenTutorial = false;
+
+/* ---- Wallet ($DOGZ balance + transaction history) ----
+   In backend mode this is fetched fresh from /api/wallet each time the panel opens, since
+   the server is the sole source of truth for every credit. In offline/local mode there's no
+   ledger to fetch, so logWalletTransactionLocal() below appends an entry itself at the same
+   points the local coin balance is bumped (mission claims, offline run rewards). */
+let walletTransactions = []; // [{ id, amount, type, description, createdAt }], newest first
+let walletHasMore = false; // whether the backend has more (older) pages beyond what's loaded
+let walletLoadingMore = false;
+const MAX_LOCAL_WALLET_ENTRIES = 100;
+
+/* ---- Daily login streak (server-authoritative, see /api/daily/claim in server.js) ----
+   streakCount/longestStreak/streakClaimedToday are just a display of whatever /api/state
+   most recently reported; the popup only ever shows what /api/daily/claim actually granted. */
+let streakCount = 0;
+let longestStreak = 0;
+let streakClaimedToday = false;
+const DAILY_STREAK_REWARDS = [20, 30, 40, 60, 80, 120, 200]; // mirrors server.js, for display only
+
+/* ---- Zen Pass (x2/x3/x4/x5 coin multiplier, paid in TON via TonConnect) ----
+   The server (see ZEN_PASS_TIERS in server.js) is the sole authority on tier/multiplier —
+   this is display-only, refreshed from res.player.zenPass every time an /api endpoint
+   returns a player object (see applyZenPassFromPlayer() below). */
+const ZEN_PASS_TIERS = [ // mirrors ZEN_PASS_TIERS in server.js, for display only
+  { tier:1, multiplier:2, priceTon:1 },
+  { tier:2, multiplier:3, priceTon:2 },
+  { tier:3, multiplier:4, priceTon:3 },
+  { tier:4, multiplier:5, priceTon:4 },
+];
+let zenPass = { tier:0, multiplier:1, walletAddress:null, nextTier:ZEN_PASS_TIERS[0] };
+function applyZenPassFromPlayer(playerObj){
+  if (playerObj && playerObj.zenPass) zenPass = playerObj.zenPass;
+}
+
+/* ---- Auto Pilot (one-time Zen Pass purchase, paid in TON via TonConnect) ----
+   Mirrors AUTO_PILOT_PRICE_TON in server.js — display-only, refreshed from res.player.autoPilot
+   every time an /api endpoint returns a player object (see applyAutoPilotFromPlayer() below).
+   Once owned, the dog flaps itself during a run (see autopilotStep(), called from update()) —
+   it still just pushes real flap timestamps through the same flap() function a tap would, so
+   nothing about the server's run anti-cheat needs to change for it. */
+const AUTO_PILOT_PRICE_TON = 5;
+let autoPilot = false;
+function applyAutoPilotFromPlayer(playerObj){
+  if (playerObj && typeof playerObj.autoPilot !== 'undefined') autoPilot = !!playerObj.autoPilot;
+}
+
+/* ---- Telegram Mini App identity ---- */
+const TELEGRAM_BOT_USERNAME = 'doggiezenbot';      // without "@"
+const TELEGRAM_APP_SHORT_NAME = 'DoggieZen';       // Mini App short name set in BotFather
+
+/* ---- Backend API ----
+   Backend and frontend are now deployed together on Netlify (see netlify.toml, which
+   redirects /api/* to the Netlify Function in netlify/functions/api.js) — same origin, so
+   this is deliberately relative instead of an absolute URL. Everything that awards $DOGZ,
+   updates the leaderboard, or claims a mission reward is validated there — the client never
+   has authority to grant itself rewards. */
+const API_BASE_URL = '';
+let backendAvailable = null; // null = not yet determined, true/false once we know
+let backendWarned = false;   // only show the "playing offline" toast once per session
+
+/* ---- TonConnect (Zen Pass wallet connect + payment) ----
+   TODO: host tonconnect-manifest.json (included alongside this file) somewhere public and
+   point this at its real, absolute URL — TonConnect wallets fetch it to show your app's
+   name/icon in their connect screen. It CANNOT be a relative path or localhost. */
+const TONCONNECT_MANIFEST_URL = 'https://doggiezen.netlify.app/tonconnect-manifest.json';
+let tonConnectUI = null; // lazily created — see ensureTonConnectUI()
+
+// BUG FIX: this previously called fetch() with no timeout at all, so on a flaky mobile
+// connection (Telegram WebView on cellular, a stalled TCP handshake, etc.) a request could
+// hang indefinitely — the caller (e.g. withBtnLoading) would then leave a button spinner
+// stuck forever, and startGame()/endGame() would leave the player staring at a frozen
+// screen instead of falling back to local/offline mode. AbortController + a hard timeout
+// guarantees apiCall() always settles within API_TIMEOUT_MS either way.
+const API_TIMEOUT_MS = 8000;
+async function apiCall(path, body){
+  const controller = new AbortController();
+  const timer = setTimeout(()=> controller.abort(), API_TIMEOUT_MS);
+  try{
+    const res = await fetch(API_BASE_URL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal,
+    });
+    const json = await res.json().catch(()=>null);
+    if (!res.ok || !json || json.success === false){
+      throw new Error((json && json.error) || ('HTTP ' + res.status));
+    }
+    backendAvailable = true;
+    return json;
+  } catch(e){
+    backendAvailable = false;
+    if (!backendWarned){
+      backendWarned = true;
+      const msg = e && e.name === 'AbortError'
+        ? "Server's slow to respond — playing offline, progress won't be saved"
+        : "Can't reach server — playing offline, progress won't be saved";
+      toast(msg);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Wraps an async button action so the button visibly disables and shows a spinner while
+// waiting on the network — without this, a slow connection makes a tap look like it did
+// nothing, and players end up mashing Claim/Verify/etc. multiple times.
+async function withBtnLoading(btn, task){
+  if (!btn || btn.disabled) return;
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btnSpinner"></span>';
+  try{
+    await task();
+  } finally {
+    // If the action succeeded it usually re-renders the whole panel (replacing this button
+    // entirely), so restoring the old label here is a harmless no-op in that case — it only
+    // matters when the call failed and the button is still the one on screen.
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+  }
+}
+
+/* ---- Local storage shim ----
+   BUG FIX: this file previously called `window.storage.get/set(...)` everywhere below,
+   which is the persistent-storage API available inside Claude.ai Artifacts — it does NOT
+   exist on a normal deployed website (Netlify, or anywhere else). In production that made
+   `window.storage.get(...)` throw immediately, which every call site here silently
+   swallows with an empty `catch(e){}` — so any time the backend call failed for even a
+   moment (a cold Netlify Function start, a brief network hiccup, an expired initData
+   hash, etc.), the code fell through into this "local" fallback, which itself did
+   nothing but fail, leaving every stat at its initial default (0). That is what made the
+   game look like it "reset" the player's progress.
+   Fixed by implementing the same tiny get/set/delete surface on top of the real,
+   always-available `window.localStorage`. This does not change server-authoritative
+   behavior at all — real Telegram sessions still go through /api/* as before; this only
+   fixes the local/offline-preview fallback path so it actually works instead of
+   silently no-op'ing. */
+// Clamps a persisted numeric field to a finite, non-negative integer. Used when loading
+// local-mode save data so a corrupted value (NaN, a negative number from some past bug,
+// a string, Infinity) can never leak into gameplay/display state — falls back to 0.
+function sanitizeCount(v){
+  const n = Number(v);
+  return (Number.isFinite(n) && n >= 0) ? Math.floor(n) : 0;
+}
+
+const storage = {
+  async get(key, _shared){
+    try{
+      const raw = window.localStorage.getItem('dz:' + key);
+      return raw === null ? null : { value: raw };
+    } catch(e){ return null; }
+  },
+  async set(key, value, _shared){
+    try{
+      window.localStorage.setItem('dz:' + key, value);
+      return { value };
+    } catch(e){ return null; }
+  },
+};
+
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+let tgUser = null;      // { id, first_name, last_name, username, photo_url, language_code }
+let tgId = 'guest';     // string; used as the storage key for each player
+let startParam = null;  // referrer's code, if the app was opened via an invite link
+
+function initTelegramIdentity(){
+  if (tg){
+    try{
+      tg.ready();
+      tg.expand();
+      // initDataUnsafe is read client-side — fine for display personalization,
+      // BUT it must never be trusted for anything of value (airdrop claims, etc.).
+      // For that, send tg.initData (the raw signed string) to your server
+      // and verify its hash with the bot token before crediting any reward.
+      const u = tg.initDataUnsafe && tg.initDataUnsafe.user;
+      if (u && u.id){
+        tgUser = u;
+        tgId = String(u.id);
+        username = (u.username ? '@' + u.username
+                    : [u.first_name, u.last_name].filter(Boolean).join(' ')) || username;
+      }
+      if (tg.initDataUnsafe && tg.initDataUnsafe.start_param){
+        startParam = tg.initDataUnsafe.start_param;
+      }
+      if (tg.setHeaderColor) tg.setHeaderColor('#1A120A');
+      if (tg.setBackgroundColor) tg.setBackgroundColor('#1A120A');
+    } catch(e){ /* not running inside Telegram, or SDK blocked — fall back to guest mode */ }
+  }
+  // outside Telegram (e.g. previewing in a regular browser), tgId stays 'guest' —
+  // so the game can still be tested without errors.
+}
+initTelegramIdentity();
+const storageKeyStats = 'player-stats:' + tgId;
+const storageKeyMissions = 'missions-state:' + tgId;
+const storageKeyWallet = 'wallet-history:' + tgId;
+
+const liveScore = document.getElementById('liveScore');
+const coinTop = document.getElementById('coinTop');
+const bestTop = document.getElementById('bestTop');
+const homeScreen = document.getElementById('homeScreen');
+const gameOverCard = document.getElementById('gameOverCard');
+const bottomNav = document.getElementById('bottomNav');
+const loadingOverlay = document.getElementById('loadingOverlay');
+
+function refreshTopBar(){
+  coinTop.textContent = coins;
+  bestTop.textContent = best;
+}
+refreshTopBar();
+
+/* ---- Sound (synthesized, no external files needed) ---- */
+let audioCtx = null;
+function ensureAudio(){
+  if (!audioCtx){
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return null; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function beep(freq, duration, type, vol){
+  const ac = ensureAudio();
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.value = vol;
+  o.connect(g); g.connect(ac.destination);
+  o.start();
+  g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration);
+  o.stop(ac.currentTime + duration);
+}
+function sfxFlap(){ beep(520, 0.08, 'square', 0.05); }
+function sfxScore(){ beep(880, 0.12, 'sine', 0.10); }
+function sfxCrash(){ beep(120, 0.35, 'sawtooth', 0.16); }
+
+/* ---- Background music (synthesized loop — same "no external files" approach as the SFX
+   above, so there's no audio asset to host/download and no licensing to worry about). A
+   calm, zen-leaning pentatonic bass + arpeggio loop scheduled directly against the
+   AudioContext clock (the standard "lookahead scheduler" pattern: queue notes a little
+   ahead of real time on a setInterval tick, rather than relying on setTimeout's own jittery
+   timing for musical accuracy). Runs continuously in the background across home/playing/dead
+   states — it's ambient wallpaper, not tied to run state — at a low volume so it sits well
+   under the gameplay SFX above rather than competing with them. */
+let musicEnabled = true; // flipped by the topbar music button; loaded from storage in init()
+let musicGainNode = null;
+let musicSchedulerTimer = null;
+let musicNextNoteTime = 0;
+let musicPatternStep = 0;
+
+const MUSIC_TEMPO = 96; // bpm
+const MUSIC_STEP_SEC = 60 / MUSIC_TEMPO / 2; // one 8th note
+const MUSIC_LOOKAHEAD_SEC = 0.12; // how far ahead of "now" notes get scheduled each tick
+const MUSIC_SCHEDULER_INTERVAL_MS = 25;
+const MUSIC_STEPS_PER_BAR = 8;
+// One root note per bar — a gentle, lo-fi-ish i–VI–III–VII progression in A minor (A2, F2,
+// C3, G2) — cycling underneath the melody below.
+const MUSIC_BASS_NOTES = [110.00, 87.31, 130.81, 98.00];
+// A minor pentatonic, ascending (A3..E5) — the melody arpeggio picks indices into this.
+const MUSIC_SCALE = [220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33];
+// One melody step per 8th note in a bar; null = rest, so the line breathes instead of
+// filling every single step (which would sound busy rather than calm).
+const MUSIC_MELODY_PATTERN = [0, null, 2, 3, null, 2, 4, null];
+
+function playMusicNote(freq, time, duration, type, vol){
+  if (!freq || !musicGainNode) return;
+  const ac = audioCtx;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, time);
+  g.gain.exponentialRampToValueAtTime(vol, time + 0.03); // soft attack — no clicky onset
+  g.gain.exponentialRampToValueAtTime(0.0001, time + duration); // gentle release
+  o.connect(g); g.connect(musicGainNode);
+  o.start(time);
+  o.stop(time + duration + 0.05);
+}
+
+function scheduleMusicStep(time){
+  const barIndex = Math.floor(musicPatternStep / MUSIC_STEPS_PER_BAR) % MUSIC_BASS_NOTES.length;
+  const stepInBar = musicPatternStep % MUSIC_STEPS_PER_BAR;
+
+  if (stepInBar === 0 || stepInBar === 4){
+    playMusicNote(MUSIC_BASS_NOTES[barIndex], time, MUSIC_STEP_SEC * 3.6, 'triangle', 0.24);
+  }
+  const melodyIdx = MUSIC_MELODY_PATTERN[stepInBar];
+  if (melodyIdx !== null){
+    const freq = MUSIC_SCALE[(melodyIdx + barIndex) % MUSIC_SCALE.length];
+    playMusicNote(freq, time, MUSIC_STEP_SEC * 1.7, 'sine', 0.16);
+  }
+  musicPatternStep = (musicPatternStep + 1) % (MUSIC_STEPS_PER_BAR * MUSIC_BASS_NOTES.length);
+}
+
+function musicSchedulerTick(){
+  if (!musicEnabled || !audioCtx) return;
+  while (musicNextNoteTime < audioCtx.currentTime + MUSIC_LOOKAHEAD_SEC){
+    scheduleMusicStep(musicNextNoteTime);
+    musicNextNoteTime += MUSIC_STEP_SEC;
+  }
+}
+
+function startMusic(){
+  if (!musicEnabled || musicSchedulerTimer) return; // already running, or turned off
+  const ac = ensureAudio();
+  if (!ac) return;
+  if (!musicGainNode){
+    musicGainNode = ac.createGain();
+    musicGainNode.gain.value = 1;
+    musicGainNode.connect(ac.destination);
+  }
+  musicNextNoteTime = ac.currentTime + 0.05;
+  musicPatternStep = 0;
+  musicSchedulerTimer = setInterval(musicSchedulerTick, MUSIC_SCHEDULER_INTERVAL_MS);
+}
+
+function stopMusic(){
+  if (musicSchedulerTimer){ clearInterval(musicSchedulerTimer); musicSchedulerTimer = null; }
+}
+
+function updateMusicToggleUI(){
+  const btn = document.getElementById('musicToggleBtn');
+  const iconUse = document.getElementById('musicIconUse');
+  if (btn) btn.setAttribute('aria-pressed', musicEnabled ? 'true' : 'false');
+  if (iconUse) iconUse.setAttribute('href', musicEnabled ? '#i-music' : '#i-music-off');
+}
+
+async function toggleMusic(){
+  musicEnabled = !musicEnabled;
+  updateMusicToggleUI();
+  if (musicEnabled) startMusic(); else stopMusic();
+  try{ await storage.set('music-enabled', musicEnabled ? '1' : '0', false); } catch(e){}
+}
+
+// Mobile/desktop browsers only allow AudioContext playback after a real user gesture, so the
+// very first pointerdown/keydown anywhere on the page (tapping Play, the topbar, a menu — it
+// doesn't matter which) is what actually kicks the music off, same as sfxFlap() already does
+// implicitly for sound effects via ensureAudio().
+function armMusicAutostart(){
+  const start = () => {
+    ensureAudio();
+    startMusic();
+    document.removeEventListener('pointerdown', start);
+    document.removeEventListener('keydown', start);
+  };
+  document.addEventListener('pointerdown', start, { once:true });
+  document.addEventListener('keydown', start, { once:true });
+}
+armMusicAutostart();
+
+/* ---- Persistent storage ----
+   Two modes:
+   - BACKEND MODE (real Telegram launch, tg.initData present): every read/write that
+     matters goes through the server in /server, which verifies initData before touching
+     anything. This is the path real players use.
+   - LOCAL PREVIEW MODE (no tg.initData — e.g. opening the file directly in a browser to
+     test): falls back to window.storage so you can still play and see the UI without a
+     backend running. Nothing in this mode is trustworthy or shared with real players. */
+const usingBackend = !!(tg && tg.initData);
+let myRank = null; // this player's leaderboard position, filled in by the backend
+
+async function loadPlayerData(){
+  if (usingBackend){
+    const res = await apiCall('/api/state', { initData: tg.initData, startParam });
+    if (res){
+      coins = res.player.coins || 0;
+      best = res.player.best || 0;
+      gamesPlayed = res.player.gamesPlayed || 0;
+      totalPipes = res.player.totalPipes || 0;
+      referredFriends = res.player.referredFriends || 0;
+      referredBy = res.player.referredBy || null;
+      seenTutorial = !!res.player.seenTutorial;
+      missions.forEach(m=>{
+        m.progress = (res.player.missions && res.player.missions.progress[m.id]) || 0;
+        m.claimed = !!(res.player.missions && res.player.missions.claimed[m.id]);
+      });
+      socialMissions.forEach(sm=>{
+        const o = res.player.social && res.player.social.opened[sm.id];
+        sm.opened = !!o;
+        sm.verified = !!(o && o.verified);
+        sm.claimed = !!(res.player.social && res.player.social.claimed[sm.id]);
+      });
+      if (res.player.streak){
+        streakCount = res.player.streak.count || 0;
+        longestStreak = res.player.streak.longest || 0;
+        streakClaimedToday = !!res.player.streak.claimedToday;
+      }
+      applyZenPassFromPlayer(res.player);
+      applyAutoPilotFromPlayer(res.player);
+      leaderboardEntries = res.leaderboard || [];
+      myRank = res.myRank || null;
+      refreshTopBar();
+      return;
+    }
+    // backend unreachable — fall through to local mode for this session so the game is still playable
+  }
+  let isFirstEverSave = true;
+  try{
+    const res = await storage.get(storageKeyStats, false);
+    if (res && res.value){
+      isFirstEverSave = false;
+      const d = JSON.parse(res.value);
+      // BUG FIX: `d.coins || 0` alone lets a corrupted/tampered save (NaN, a negative
+      // number, a string, Infinity from a bad arithmetic bug elsewhere) straight through
+      // into gameplay state. sanitizeCount() below clamps every persisted counter to a
+      // finite, non-negative integer, and any field that fails validation falls back to 0
+      // (or its documented default) instead of propagating garbage.
+      coins = sanitizeCount(d.coins);
+      best = sanitizeCount(d.best);
+      gamesPlayed = sanitizeCount(d.gamesPlayed);
+      totalPipes = sanitizeCount(d.totalPipes);
+      if (!tgUser) username = (typeof d.username === 'string' && d.username.trim()) ? d.username.trim().slice(0, 40) : 'ZenPilot';
+      referredFriends = sanitizeCount(d.referredFriends);
+      referredBy = (typeof d.referredBy === 'string' && d.referredBy) ? d.referredBy : null;
+      seenTutorial = !!d.seenTutorial;
+    }
+  } catch(e){ /* first run, storage unavailable, or corrupted JSON — start fresh instead of throwing */ }
+  if (isFirstEverSave && startParam && startParam !== tgId && !referredBy){
+    referredBy = startParam;
+    savePlayerDataLocal();
+  }
+  try{
+    const res = await storage.get(storageKeyMissions, false);
+    const today = new Date().toISOString().slice(0,10);
+    if (res && res.value){
+      const d = JSON.parse(res.value);
+      if (d.resetDate === today){
+        missions.forEach(m=>{
+          if (d.progress && d.progress[m.id] != null) m.progress = d.progress[m.id];
+          if (d.claimed && d.claimed[m.id]) m.claimed = true;
+        });
+      }
+    }
+  } catch(e){}
+  await loadWalletLocal();
+  refreshTopBar();
+}
+
+// Marks the tutorial as seen. Backend mode calls a dedicated endpoint (there's no run or
+// mission attached yet at this point, so it doesn't fit the run-submit or claim flows).
+async function markTutorialSeen(){
+  seenTutorial = true;
+  if (usingBackend){
+    const res = await apiCall('/api/profile/tutorial-seen', { initData: tg.initData });
+    if (res) return;
+  }
+  savePlayerDataLocal();
+}
+
+async function savePlayerDataLocal(){
+  try{
+    await storage.set(storageKeyStats, JSON.stringify({
+      coins, best, gamesPlayed, totalPipes, username, referredFriends, referredBy, seenTutorial
+    }), false);
+  } catch(e){}
+}
+// Appends one entry to the local (offline-mode-only) wallet ledger and persists it. Backend
+// mode never calls this — its ledger lives server-side and is fetched via /api/wallet instead.
+async function logWalletTransactionLocal(amount, type, description){
+  if (usingBackend || !amount) return;
+  walletTransactions.unshift({ amount, type, description, createdAt: Date.now() });
+  walletTransactions = walletTransactions.slice(0, MAX_LOCAL_WALLET_ENTRIES);
+  try{
+    await storage.set(storageKeyWallet, JSON.stringify(walletTransactions), false);
+  } catch(e){}
+}
+async function loadWalletLocal(){
+  try{
+    const res = await storage.get(storageKeyWallet, false);
+    walletTransactions = (res && res.value) ? JSON.parse(res.value) : [];
+  } catch(e){ walletTransactions = []; }
+}
+async function saveMissionsLocal(){
+  try{
+    const today = new Date().toISOString().slice(0,10);
+    const progress = {}, claimed = {};
+    missions.forEach(m=>{ progress[m.id] = m.progress; claimed[m.id] = m.claimed; });
+    await storage.set(storageKeyMissions, JSON.stringify({ resetDate: today, progress, claimed }), false);
+  } catch(e){}
+}
+async function submitScoreLocal(finalScore){
+  const cleanScore = Math.max(0, Math.min(9999, Math.floor(Number(finalScore) || 0)));
+  try{
+    const res = await storage.get('global-leaderboard', true);
+    let entries = (res && res.value) ? JSON.parse(res.value) : [];
+    const existing = entries.find(e => e.tgId === tgId);
+    if (existing){
+      if (cleanScore > existing.score){ existing.score = cleanScore; existing.name = username; existing.ts = Date.now(); }
+    } else {
+      entries.push({ tgId, name: username, score: cleanScore, ts: Date.now() });
+    }
+    entries.sort((a,b)=> b.score - a.score);
+    entries = entries.slice(0, 20);
+    await storage.set('global-leaderboard', JSON.stringify(entries), true);
+    leaderboardEntries = entries;
+  } catch(e){}
+}
+
+let state = 'home'; // home, playing, dead
+let frame = 0;
+let score = 0;
+
+const DOG_SCALE = 0.72; // shrinks the character's art + hitbox together, so gaps feel easier
+const dog = { x: 110, y: H/2, vy: 0, r: 28*DOG_SCALE, rot: 0 };
+const GRAVITY = 0.45;
+const FLAP = -8.4;
+
+let pipes = [];
+const PIPE_GAP = 210;
+const PIPE_W = 68;
+let pipeTimer = 0;
+let speed = 3.2;
+
+/* ---- Deterministic pipe layout + fixed-timestep sim ----
+   Mirrors physics.js on the server EXACTLY (same constants, same mulberry32 PRNG, same
+   step-based integration) — this is what lets /api/run/submit replay a run's recorded flaps
+   and independently check the score it's claiming. There's no shared script include between
+   this single-file client and the separately-deployed backend (see DEPLOY.md), so this is a
+   deliberate inline copy, not a reference — if you change gravity/flap/pipe/spawn constants
+   here, mirror the change in physics.js too, or the server starts rejecting honest runs.
+   FIXED_STEP_MS decouples simulation speed from the device's actual display refresh rate:
+   before this, `update()` ran once per requestAnimationFrame call with no time scaling, so
+   the game genuinely ran faster on a 120Hz phone than a 60Hz one. Now exactly one physics
+   step happens per FIXED_STEP_MS of real elapsed time, on every device. */
+const FIXED_STEP_MS = 1000 / 60;
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let runRand = mulberry32(Date.now() & 0xffffffff); // reseeded per run in resetRun() below
+let simAccumulatorMs = 0;
+let lastRafTime = null;
+
+let clouds = [];
+for (let i=0;i<5;i++){
+  clouds.push({x: Math.random()*W, y: 70+Math.random()*180, s: 0.6+Math.random()*0.9, sp: 0.3+Math.random()*0.5});
+}
+let mountains = [];
+for (let i=0;i<6;i++){
+  mountains.push({x: i*(W/4.2), w: 140+Math.random()*80, h: 90+Math.random()*70});
+}
+
+let bullPassed = 0; // bull (green) candles cleared this run — tracked for the bull mission + bonus coins
+let flapPunch = 0; // 0→1 impulse on each flap, decays every frame — drives squash/stretch + ear/paw perk
+let currentRunToken = null; // server-issued token for the run in progress, null when playing offline
+let runStartedAt = 0; // Date.now() when this run started — flapTimestamps below are ms offsets from this
+let flapTimestamps = []; // ms-since-run-start of every flap this run — sent with /api/run/submit as
+                          // input evidence for the server's anti-cheat check (see evaluateFlapEvidence
+                          // in server.js). Purely additive: the server ignores it if empty/absent.
+
+function resetRun(seed){
+  dog.y = H/2; dog.vy = 0; dog.rot = 0;
+  pipes = []; pipeTimer = 0; score = 0; frame = 0; speed = 3.2; bullPassed = 0; flapPunch = 0;
+  flapTimestamps = []; runStartedAt = Date.now();
+  runRand = mulberry32(seed >>> 0);
+  simAccumulatorMs = 0; lastRafTime = null;
+  liveScore.textContent = '0';
+}
+
+function flap(){
+  if (state === 'playing'){
+    dog.vy = FLAP; sfxFlap(); flapPunch = 1;
+    flapTimestamps.push(Date.now() - runStartedAt);
+  }
+}
+
+/* ---- Auto Pilot gameplay ----
+   Runs once per fixed physics step, right before the normal gravity/pipe update below, and
+   decides whether to flap this step — same bang-bang control a lot of simple "bot" players
+   use: aim for the vertical center of the next pipe's gap, and flap whenever gravity would
+   otherwise carry the dog to (or past) that target before the next step. Deliberately calls
+   the SAME flap() used by taps rather than moving the dog directly, so autopilot runs still
+   produce real flapTimestamps for /api/run/submit's replay-based anti-cheat check (see
+   physics.js) — the server can't tell an autopilot run from a very consistent human one, and
+   doesn't need to. No-ops instantly unless the player has bought Auto Pilot (see
+   applyAutoPilotFromPlayer()) and a run is actually in progress. */
+function autopilotStep(){
+  if (!autoPilot || state !== 'playing') return;
+  let targetY = H/2; // no pipe on screen yet — aim for the middle, same as the idle bob
+  for (const p of pipes){
+    if (p.x + PIPE_W > dog.x - dog.r){ targetY = p.gapY; break; } // nearest pipe not yet passed
+  }
+  // A small margin above the exact center keeps the dog from flapping right on the boundary
+  // every single frame (which reads as a jittery, robotic flutter) — it settles into a
+  // gentle oscillation around the gap center instead, closer to how a person actually plays.
+  if (dog.y >= targetY - 4) flap();
+}
+
+async function startGame(){
+  currentRunToken = null;
+  // Ask the server to open a run *before* gameplay starts — it hands back a seed (used below
+  // to seed this run's pipe layout) alongside the runToken, so /api/run/submit can later
+  // regenerate the exact same layout and replay this run's recorded flaps against it. See
+  // "Anti-cheat, honestly" in the README and physics.js.
+  let seed = (Math.random() * 2 ** 31) >>> 0; // offline/local-preview fallback — never replayed
+  if (usingBackend){
+    const res = await apiCall('/api/run/start', { initData: tg.initData });
+    if (res){ currentRunToken = res.runToken; if (res.seed != null) seed = res.seed >>> 0; }
+  }
+  resetRun(seed);
+  state = 'playing';
+  homeScreen.classList.add('hidden');
+  gameOverCard.classList.remove('show');
+  bottomNav.classList.add('hidden');
+  liveScore.style.display = 'block';
+}
+
+function goHome(){
+  state = 'home';
+  homeScreen.classList.remove('hidden');
+  gameOverCard.classList.remove('show');
+  bottomNav.classList.remove('hidden');
+  liveScore.style.display = 'none';
+  setActiveNav('home');
+}
+
+async function endGame(){
+  state = 'dead';
+  sfxCrash();
+  liveScore.style.display = 'none';
+
+  // Show an optimistic result immediately so the game feels responsive — these numbers get
+  // silently corrected below once the server confirms them (only differs if something was
+  // tampered with, which honest players will never notice).
+  const optimisticEarned = score > 0 ? score * 3 : 0;
+  document.getElementById('finalScore').textContent = score;
+  document.getElementById('finalBest').textContent = Math.max(best, score);
+  document.getElementById('finalCoins').textContent = optimisticEarned;
+  gameOverCard.classList.add('show');
+
+  if (usingBackend && currentRunToken){
+    const res = await apiCall('/api/run/submit', {
+      initData: tg.initData,
+      runToken: currentRunToken,
+      score,
+      pipesThisRun: score, // one pipe cleared per point scored
+      bullPassed,
+      flapTimestamps, // see evaluateFlapEvidence() in server.js — anti-cheat evidence, not required
+    });
+    currentRunToken = null;
+    if (res){
+      coins = res.player.coins;
+      best = res.player.best;
+      gamesPlayed = res.player.gamesPlayed;
+      totalPipes = res.player.totalPipes;
+      missions.forEach(m=>{
+        m.progress = (res.player.missions && res.player.missions.progress[m.id]) || 0;
+        m.claimed = !!(res.player.missions && res.player.missions.claimed[m.id]);
+      });
+      applyZenPassFromPlayer(res.player);
+      applyAutoPilotFromPlayer(res.player);
+      leaderboardEntries = res.leaderboard || leaderboardEntries;
+      myRank = res.myRank || myRank;
+      refreshTopBar();
+      document.getElementById('finalScore').textContent = res.acceptedScore;
+      document.getElementById('finalBest').textContent = best;
+      document.getElementById('finalCoins').textContent = res.earnedCoins;
+      return;
+    }
+    // fall through to local/offline handling below if the server call failed
+  }
+
+  // Offline fallback (no backend, or the call above failed): keep the run playable but
+  // everything here is local-only and not shared with other players.
+  gamesPlayed++;
+  coins += optimisticEarned;
+  logWalletTransactionLocal(optimisticEarned, 'gameplay', `Run reward — scored ${score}`);
+  if (score > best) best = score;
+  updateMissionProgressLocal('score', score);
+  updateMissionProgressLocal('play', 1);
+  updateMissionProgressLocal('marathon', 1);
+  updateMissionProgressLocal('pipes', totalPipes);
+  updateMissionProgressLocal('bull', bullPassed);
+  updateMissionProgressLocal('highscore', score);
+  saveMissionsLocal();
+  savePlayerDataLocal();
+  const maxPlausibleScore = Math.floor(frame / 100) + 2;
+  submitScoreLocal(Math.min(score, maxPlausibleScore));
+  refreshTopBar();
+}
+
+const tutorialCard = document.getElementById('tutorialCard');
+
+document.getElementById('playBtn').addEventListener('click', ()=>{
+  if (!seenTutorial){
+    tutorialCard.classList.add('show');
+  } else {
+    startGame();
+  }
+});
+document.getElementById('tutorialGotIt').addEventListener('click', ()=>{
+  markTutorialSeen();
+  tutorialCard.classList.remove('show');
+  startGame();
+});
+document.getElementById('retryBtn').addEventListener('click', startGame);
+document.getElementById('homeBtn').addEventListener('click', goHome);
+
+/* ---- Daily reward popup ----
+   Shown once per session, right after load, when /api/state reports the player hasn't
+   checked in yet today. Claiming calls /api/daily/claim — the only thing that actually
+   grants the reward; this popup just displays whatever the server confirms. */
+const dailyRewardCard = document.getElementById('dailyRewardCard');
+
+function renderDailyRewardTrack(){
+  const track = document.getElementById('dailyRewardTrack');
+  // 1..7, the day about to be claimed. streakCount is the LAST confirmed streak (0 for a
+  // brand-new player who has never checked in), so the upcoming day is streakCount + 1,
+  // wrapped back to 1 every 7 days. NOTE: this was previously
+  // `(streakCount % LEN) || LEN`, which for a new player (streakCount === 0) evaluated
+  // to LEN (7) instead of 1 — new players saw "Day 7" on their very first check-in.
+  const dayInCycle = (streakCount % DAILY_STREAK_REWARDS.length) + 1;
+  track.innerHTML = DAILY_STREAK_REWARDS.map((reward, i)=>{
+    const day = i + 1;
+    const cls = day < dayInCycle ? 'done' : (day === dayInCycle ? 'today' : '');
+    return `<div class="streakDay ${cls}">${day}</div>`;
+  }).join('');
+  document.getElementById('dailyRewardStreakLabel').textContent =
+    streakCount > 0 ? `Day ${dayInCycle} of your streak` : 'Start your streak today';
+  document.getElementById('dailyRewardAmount').textContent = DAILY_STREAK_REWARDS[dayInCycle - 1];
+}
+
+function maybeShowDailyReward(){
+  if (!usingBackend || streakClaimedToday) return;
+  renderDailyRewardTrack();
+  dailyRewardCard.classList.add('show');
+}
+
+document.getElementById('dailyRewardClaimBtn').addEventListener('click', (e)=>{
+  withBtnLoading(e.currentTarget, async ()=>{
+    const res = await apiCall('/api/daily/claim', { initData: tg.initData });
+    if (res){
+      coins = res.player.coins;
+      streakCount = res.streak;
+      longestStreak = res.longestStreak;
+      streakClaimedToday = true;
+      refreshTopBar();
+      toast('+' + res.reward + ' $DOGZ — day ' + res.streak + ' streak!');
+    }
+    dailyRewardCard.classList.remove('show');
+  });
+});
+
+window.addEventListener('keydown', (e)=>{
+  // e.repeat guards against the OS auto-repeating keydown while Space is held down — without
+  // it, holding the key calls flap() dozens of times a second (browser key-repeat), which
+  // keeps resetting dog.vy continuously and lets the bird hover near-indefinitely. Mouse/touch
+  // taps don't have this problem since mousedown/touchstart only fire once per press, so this
+  // was giving keyboard players a real, unintended advantage over mobile players.
+  if (e.code === 'Space' && !e.repeat){ e.preventDefault(); flap(); }
+  else if (e.code === 'Space'){ e.preventDefault(); } // still swallow the repeats so the page doesn't scroll
+});
+canvas.addEventListener('mousedown', flap);
+canvas.addEventListener('touchstart', (e)=>{ e.preventDefault(); flap(); }, {passive:false});
+
+function spawnPipe(){
+  const margin = 80;
+  const gapY = margin + runRand()*(H - margin*2 - PIPE_GAP);
+  const bull = runRand() < 0.5; // true = green candle, false = red candle — bull candles now grant +1 bonus $DOGZ on clear
+  // once the run has some momentum, occasionally spawn a gap that drifts up/down for variety
+  const moving = score >= 5 && runRand() < 0.3;
+  pipes.push({
+    x: W+40, gapY, passed:false, bull, moving,
+    baseGapY: gapY, spawnFrame: frame,
+    oscAmp: 40 + runRand()*30,
+    oscSpeed: 0.02 + runRand()*0.015
+  });
+}
+
+// ---- shared sticker-outline style, matching drawShiba's palette ----
+// Everything drawn on the canvas (world elements) uses this same bold, thick,
+// rounded-join outline so the whole scene reads as one consistent style —
+// the HTML UI (panels/buttons/modals) is untouched and keeps its own look.
+const OUTLINE = '#241005';
+const OUTLINE_W = 3;
+function withOutline(fn, widthOverride, colorOverride, dctx){
+  dctx = dctx || ctx; // optional 4th arg lets callers target an offscreen sprite context instead of the live canvas — see drawCandlePipeLocal()
+  dctx.save();
+  dctx.strokeStyle = colorOverride || OUTLINE;
+  dctx.lineWidth = widthOverride || OUTLINE_W;
+  dctx.lineJoin = 'round';
+  dctx.lineCap = 'round';
+  fn();
+  dctx.restore();
+}
+
+// Darkens a "#rrggbb" color by `amount` (0-1). Used so each shape's outline is a deep
+// shade of its OWN fill color instead of one flat brown for every object — that per-object
+// tint is a big part of why flat/sticker illustration reads as intentional rather than
+// generic clip-art with a single outline color slapped on everything.
+function darkenColor(hex, amount){
+  const c = hex.replace('#','');
+  const full = c.length === 3 ? c.split('').map(ch => ch+ch).join('') : c;
+  const num = parseInt(full, 16);
+  const r = Math.max(0, Math.round(((num >> 16) & 0xFF) * (1 - amount)));
+  const g = Math.max(0, Math.round(((num >> 8) & 0xFF) * (1 - amount)));
+  const b = Math.max(0, Math.round((num & 0xFF) * (1 - amount)));
+  return `rgb(${r},${g},${b})`;
+}
+
+// Perf: only two candle variants ever exist (bull/bear), so their derived colors are
+// precomputed once here instead of calling darkenColor() — a string-parse + arithmetic
+// pass — twice per segment, twice per pipe, every single frame.
+const CANDLE_COLORS = {
+  bull: {
+    bodyCol: '#4CAF50', wickCol: '#2E7D32', laneTint: 'rgba(76,175,80,0.10)',
+    bodyOutline: darkenColor('#4CAF50', 0.55), wickOutline: darkenColor('#2E7D32', 0.45),
+    bodyShade: darkenColor('#4CAF50', 0.4),
+  },
+  bear: {
+    bodyCol: '#F4432E', wickCol: '#B7231D', laneTint: 'rgba(244,67,46,0.10)',
+    bodyOutline: darkenColor('#F4432E', 0.55), wickOutline: darkenColor('#B7231D', 0.45),
+    bodyShade: darkenColor('#F4432E', 0.4),
+  },
+};
+
+function drawMountains(){
+  // stylized distant "market skyline" — bars with a short wick, echoing the
+  // candle obstacles up close, so the whole world reads as one chart.
+  // Kept at a thinner, lower-alpha outline than the foreground elements —
+  // same sticker style, just pushed back for depth (haze/distance cue).
+  ctx.save();
+  mountains.forEach(m=>{
+    const barW = m.w * 0.4;
+    const bx = m.x + (m.w - barW)/2;
+    const topY = H - 26 - m.h;
+    ctx.fillStyle = 'rgba(60,42,30,0.14)';
+    ctx.beginPath(); ctx.rect(bx, topY, barW, m.h);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(36,16,5,0.4)';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(36,16,5,0.4)';
+    ctx.lineWidth = m.w * 0.06;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(m.x + m.w/2, topY - m.h*0.12);
+    ctx.lineTo(m.x + m.w/2, topY);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+// `ctx` is a parameter here (shadowing the global canvas context), same pattern as
+// drawShibaLocal() above — lets this same function draw either straight onto the live
+// canvas (for moving pipes, whose gap changes every frame and can't be cached) or into an
+// offscreen sprite canvas (for static pipes — see getPipeSprite() below).
+function drawCandlePipeLocal(ctx, x, gapY, bull){
+  ctx.save();
+  // bull (up) = green candle, !bull (down) = red candle — one obstacle = one candle
+  const c = bull ? CANDLE_COLORS.bull : CANDLE_COLORS.bear;
+  const { bodyCol, wickCol, laneTint, bodyOutline, wickOutline, bodyShade } = c;
+
+  const cx = x + PIPE_W/2;
+  const bodyW = PIPE_W * 0.62;      // wide, flat body — no gradient block
+  const bx = cx - bodyW/2;
+  const wickW = PIPE_W * 0.13;
+  const wickCap = 26;               // short wick length at each end of the body, like the reference
+
+  // each obstacle segment (above or below the gap) is drawn as one full candle:
+  // a thin wick runs end-to-end, and the wide body covers the middle section,
+  // so the wick only "peeks out" briefly at both ends — matching real candle proportions
+  function segment(top, bottom){
+    const segH = Math.max(0, bottom - top);
+    // transparent lane covering the whole collision area, so the hazard zone stays clear
+    ctx.fillStyle = laneTint;
+    ctx.fillRect(x, top, PIPE_W, segH);
+
+    // full-length wick spanning the segment, with its own darker-toned outline
+    const wickX = cx - wickW/2;
+    ctx.fillStyle = wickCol;
+    ctx.beginPath(); ctx.rect(wickX, top, wickW, segH); ctx.fill();
+    withOutline(()=>{ ctx.beginPath(); ctx.rect(wickX, top, wickW, segH); ctx.stroke(); }, OUTLINE_W*0.85, wickOutline, ctx);
+    // thin highlight down one edge for a hint of roundness — plain rect strip, safe since
+    // the wick itself is a plain rect (nothing for it to spill outside of)
+    if (segH > 0){
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(wickX, top, wickW*0.4, segH);
+    }
+
+    // flat body covering the middle of the segment, leaving a short wick at each end —
+    // slightly rounded corners to match the dog's rounded, sticker-style shapes
+    const cap = Math.min(wickCap, segH * 0.22);
+    const bodyTop = top + cap;
+    const bodyH = Math.max(0, segH - cap*2);
+    const r = Math.min(6, bodyW/2, bodyH/2);
+    function bodyPath(){ ctx.beginPath(); ctx.roundRect(bx, bodyTop, bodyW, bodyH, r); }
+    if (bodyH > 0){
+      ctx.fillStyle = bodyCol;
+      bodyPath(); ctx.fill();
+      withOutline(()=>{ bodyPath(); ctx.stroke(); }, undefined, bodyOutline, ctx);
+
+      // cel-shading: a soft highlight strip on the left, a soft shadow strip on the
+      // right. Perf: previously this clipped to the body's rounded path (ctx.clip()),
+      // one of the priciest canvas ops — instead use 'source-atop', which paints only
+      // onto pixels the body fill/outline just made non-transparent, giving the same
+      // "can't spill past the silhouette" result at a fraction of the cost. The only
+      // difference is a sub-pixel bleed into the ~6px rounded corners, invisible at
+      // this scale.
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.globalAlpha = 0.18; ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(bx, bodyTop, bodyW*0.32, bodyH);
+      ctx.globalAlpha = 0.28; ctx.fillStyle = bodyShade;
+      ctx.fillRect(bx + bodyW*0.62, bodyTop, bodyW*0.38, bodyH);
+      ctx.restore();
+    }
+  }
+
+  const topEdge = gapY - PIPE_GAP/2;
+  const botEdge = gapY + PIPE_GAP/2;
+  segment(0, topEdge);
+  segment(botEdge, H);
+
+  ctx.restore();
+}
+
+// Perf: ~70% of pipes never move (`moving` is only rolled for score>=5 and even then only
+// 30% of the time), so most pipes' gapY — and therefore their entire candle shape — is fixed
+// for the pipe's whole ~2-4 second lifetime on screen. Previously every pipe redrew two full
+// candles (roundRect fill+stroke, wick rect fill+stroke, two source-atop cel-shade fills —
+// one of the priciest composite modes) every single frame, for however many pipes were
+// on screen — the single heaviest per-frame cost after the character sprite was cached.
+// Static pipes now rasterize their candle shape once into an offscreen bitmap (cached on the
+// pipe object itself, built lazily the first time it's drawn) and every later frame just
+// blits it with drawImage() while `p.x` scrolls — same "rasterize once, blit forever" trick
+// as the character sprite. Moving pipes skip the cache (their gapY changes every frame, so
+// there's nothing worth caching) and keep drawing live via drawCandlePipeLocal() above.
+const PIPE_SPRITE_SUPERSAMPLE = 3; // matches SHIBA_SPRITE_SUPERSAMPLE — keeps the blit crisp despite not being drawn at the live canvas's own DPR
+function getPipeSprite(p){
+  if (!p.sprite){
+    const sprite = document.createElement('canvas');
+    sprite.width = PIPE_W * PIPE_SPRITE_SUPERSAMPLE;
+    sprite.height = H * PIPE_SPRITE_SUPERSAMPLE;
+    const sctx = sprite.getContext('2d');
+    sctx.setTransform(PIPE_SPRITE_SUPERSAMPLE, 0, 0, PIPE_SPRITE_SUPERSAMPLE, 0, 0);
+    drawCandlePipeLocal(sctx, 0, p.gapY, p.bull); // local x=0 — sprite is blitted at p.x at draw time instead
+    p.sprite = sprite;
+  }
+  return p.sprite;
+}
+
+function drawPipe(p){
+  if (p.moving){
+    drawCandlePipeLocal(ctx, p.x, p.gapY, p.bull); // gap drifts every frame — draw live, nothing to cache
+  } else {
+    ctx.drawImage(getPipeSprite(p), p.x, 0, PIPE_W, H);
+  }
+}
+
+// Perf: the grid is pixel-identical every single frame (fixed W/H, fixed line positions),
+// but dashed strokes (setLineDash) are one of the pricier canvas 2D primitives — every
+// segment boundary has to be recomputed along the path on every draw. Previously this ran
+// a fresh dashed stroke per frame; now it's rasterized once into an offscreen canvas at
+// startup and just blitted with drawImage() each frame, which is dramatically cheaper and
+// was a real source of stutter on mid/low-end devices.
+const chartGridCanvas = document.createElement('canvas');
+chartGridCanvas.width = W; chartGridCanvas.height = H;
+(function buildChartGrid(){
+  const gctx = chartGridCanvas.getContext('2d');
+  gctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  gctx.lineWidth = 1;
+  gctx.setLineDash([6,7]);
+  for (let gy = 90; gy < H; gy += 130){
+    gctx.beginPath(); gctx.moveTo(0, gy); gctx.lineTo(W, gy); gctx.stroke();
+  }
+})();
+function drawChartGrid(){
+  ctx.drawImage(chartGridCanvas, 0, 0);
+}
+
+// Perf: each cloud's shape depends only on its `s` (scale), which is rolled once at
+// creation and never changes — only c.x/c.y scroll every frame. This used to redraw three
+// ellipses + a source-atop shaded ellipse (one of the priciest canvas 2D composite modes) +
+// an outline stroke from scratch every frame, for all 5 clouds on screen. Now each cloud's
+// shape is rasterized once into an offscreen bitmap, cached by its (quantized) scale, and
+// every later frame just blits it with drawImage() as c.x/c.y move — same "rasterize once,
+// blit forever" trick used for the character sprite and static pipes above.
+const CLOUD_SPRITE_SUPERSAMPLE = 2;
+const CLOUD_SPRITE_HALF = 70; // local-space half-extent generously covering the cloud shape + outline at the max spawn scale (s=1.5)
+const cloudSpriteCache = new Map();
+function quantizeCloudScale(s){ return Math.round(s * 50) / 50; } // fine enough grid to be visually identical to the original continuous scale
+
+function drawCloudLocal(ctx, s){
+  function cloudPath(){
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 28*s, 16*s, 0, 0, Math.PI*2);
+    ctx.ellipse(20*s, 4*s, 20*s, 13*s, 0, 0, Math.PI*2);
+    ctx.ellipse(-20*s, 4*s, 18*s, 12*s, 0, 0, Math.PI*2);
+  }
+  ctx.globalAlpha = 0.85; ctx.fillStyle = '#fff';
+  cloudPath(); ctx.fill();
+
+  // soft underside shade for a touch of volume — 'source-atop' paints only onto the cloud
+  // fill's own opaque pixels, giving the same result as clip()+fill without clip()'s cost.
+  // Paid once per distinct scale now (at sprite-build time), not every frame.
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = 'rgba(150,162,182,0.22)';
+  ctx.beginPath(); ctx.ellipse(4*s, 10*s, 34*s, 11*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.strokeStyle = OUTLINE;
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = OUTLINE_W * s;
+  ctx.lineJoin = 'round';
+  cloudPath(); ctx.stroke();
+}
+
+function getCloudSprite(s){
+  const key = quantizeCloudScale(s);
+  let sprite = cloudSpriteCache.get(key);
+  if (!sprite){
+    sprite = document.createElement('canvas');
+    sprite.width = sprite.height = CLOUD_SPRITE_HALF * 2 * CLOUD_SPRITE_SUPERSAMPLE;
+    const sctx = sprite.getContext('2d');
+    sctx.setTransform(CLOUD_SPRITE_SUPERSAMPLE, 0, 0, CLOUD_SPRITE_SUPERSAMPLE, 0, 0);
+    sctx.translate(CLOUD_SPRITE_HALF, CLOUD_SPRITE_HALF);
+    drawCloudLocal(sctx, key);
+    cloudSpriteCache.set(key, sprite);
+  }
+  return sprite;
+}
+
+function drawCloud(c){
+  const sprite = getCloudSprite(c.s);
+  ctx.drawImage(sprite, c.x - CLOUD_SPRITE_HALF, c.y - CLOUD_SPRITE_HALF, CLOUD_SPRITE_HALF*2, CLOUD_SPRITE_HALF*2);
+}
+
+// Perf: identical every frame (the translate/scale around it changes where it's drawn, not
+// the gradient's own stops/radii) — build once instead of allocating a new gradient object
+// 60+ times a second just for the dog's ground shadow.
+const dogShadowGradient = (function(){
+  const g = ctx.createRadialGradient(0,0,2,0,0,31);
+  g.addColorStop(0,'rgba(15,10,3,0.35)');
+  g.addColorStop(1,'rgba(15,10,3,0)');
+  return g;
+})();
+
+// Perf: the character (tail/paws/body/ears/head/face/goggles/collar — ~90 individual
+// canvas draw calls in drawShibaLocal() below) used to be redrawn from scratch every
+// single frame. That was, by far, the single heaviest thing this game rendered every
+// frame — especially costly on mid/low-end phones, where Canvas2D commonly falls back to
+// software rasterization and every extra fill()/stroke() has a real, felt cost. Its shape
+// only actually depends on `punch` (which drives squash/stretch + the ear/paw perk) — not
+// on world position or rotation, which stay live/uncached below — so instead of drawing
+// it directly every frame, it's rendered once per distinct (quantized) punch value into an
+// offscreen bitmap and cached; every later frame at that same punch level just blits the
+// cached bitmap with drawImage(), which is dramatically cheaper. This is the same
+// "rasterize once, blit forever" trick already used for the background grid — see
+// drawChartGrid() — applied to the most expensive draw call in the game. Rotation and
+// world (x,y) position are NOT baked into the cache (they change continuously every
+// frame and can't usefully be cached) — they're applied live via the canvas transform,
+// same as before.
+const SHIBA_SPRITE_HALF = 90; // local-space half-extent generously covering every point drawShibaLocal() ever draws (tail ~x:-47, ear tip ~y:-53, paws ~y:62)
+const SHIBA_SPRITE_SIZE = SHIBA_SPRITE_HALF * 2;
+const SHIBA_SPRITE_SUPERSAMPLE = 3; // rendered at 3x and downscaled on blit, so the cached bitmap stays crisp even though it's no longer drawn at the live canvas's own DPR
+const shibaSpriteCache = new Map(); // quantized punch -> offscreen canvas
+
+// Rounds punch to a coarse 0.02 grid: flapPunch decays via `*= 0.86` each frame (~26 steps
+// from 1 down to the 0.02 cutoff in update()), and this makes every decay curve step onto
+// the same handful of grid values every single flap — so after the very first flap of a
+// session, the whole animation is served from cache with zero new bitmaps generated. A
+// step this fine is visually indistinguishable from the original continuous animation.
+function quantizePunch(punch){
+  return Math.round(punch / 0.02) * 0.02;
+}
+
+function getShibaSprite(punch){
+  const key = quantizePunch(punch);
+  let sprite = shibaSpriteCache.get(key);
+  if (!sprite){
+    sprite = document.createElement('canvas');
+    sprite.width = sprite.height = SHIBA_SPRITE_SIZE * SHIBA_SPRITE_SUPERSAMPLE;
+    const sctx = sprite.getContext('2d');
+    sctx.setTransform(SHIBA_SPRITE_SUPERSAMPLE, 0, 0, SHIBA_SPRITE_SUPERSAMPLE, 0, 0);
+    sctx.translate(SHIBA_SPRITE_HALF, SHIBA_SPRITE_HALF);
+    drawShibaLocal(sctx, key);
+    shibaSpriteCache.set(key, sprite);
+  }
+  return sprite;
+}
+
+// Draws the character itself in LOCAL space (dog center at 0,0, no world position/rotation
+// applied) onto whatever context is passed in — either the live game canvas (unused now,
+// kept only as a fallback reference for how the geometry works) or, in practice, always the
+// small offscreen sprite context from getShibaSprite() above. `ctx` is deliberately
+// shadowed as a parameter here so every draw call below (and the shade()/ear()/eye()/lens()
+// helper closures) targets whichever context this was called with, unchanged from the
+// original inline version.
+function drawShibaLocal(ctx, punch){
+  ctx.save();
+  // squash & stretch: each flap briefly stretches the dog taller/thinner, then springs back
+  // to normal over a few frames as flapPunch decays — this is what makes the tap read as
+  // snappy. Baked into the cached sprite (see getShibaSprite()) since it's purely a
+  // function of `punch`, same as everything else this function draws.
+  const squashX = 1 - punch*0.10;
+  const squashY = 1 + punch*0.16;
+  ctx.scale(squashX, squashY);
+
+  // ---- flat sticker palette: bold uniform outline, 2-tone cel shading (no heavy gradients) ----
+  // outline/lineWidth pulled from the shared OUTLINE/OUTLINE_W constants (see drawMountains)
+  // so every canvas element — dog, candles, clouds, ground — uses exactly the same outline.
+  const outline = OUTLINE;
+  const fur      = '#F5941C';  // base orange
+  const furDeep  = '#E27E0A';  // shadow-side orange
+  const cream    = '#FFF3DD';  // muzzle / chest / paws
+  const creamSh  = '#FBE3B8';  // shaded cream
+  const earIn    = '#F0A15C';  // inner-ear coral-peach
+
+  ctx.strokeStyle = outline; ctx.lineWidth = OUTLINE_W; ctx.lineJoin = 'round';
+
+  // soft shadow patch helper (flat, semi-transparent — for gentle 2-tone cel shading)
+  function shade(path, alpha){
+    ctx.save();
+    ctx.fillStyle = `rgba(150,74,0,${alpha})`;
+    path();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- tail, fluffy and curled, peeking from behind ----
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.moveTo(-33,44);
+  ctx.bezierCurveTo(-46,38,-47,20,-36,10);
+  ctx.bezierCurveTo(-44,22,-40,36,-30,40);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = cream;
+  ctx.beginPath(); ctx.ellipse(-39,17,7,10,0.5,0,Math.PI*2); ctx.fill();
+
+  // ---- back paw ----
+  ctx.fillStyle = fur;
+  ctx.beginPath(); ctx.ellipse(-24, 33, 10.5, 15.5, 0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // ---- front paws (swing back and tuck up on each flap, like a little kick) ----
+  [-13, 13].forEach(fx=>{
+    const dir = fx < 0 ? -1 : 1;
+    ctx.save();
+    ctx.translate(fx, 48);
+    ctx.rotate(-punch*0.45*dir);
+    ctx.translate(-fx, -48 - punch*4);
+    ctx.fillStyle = cream;
+    ctx.beginPath(); ctx.ellipse(fx, 54, 8.5, 6.5, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(36,16,5,0.5)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(fx-3,50); ctx.lineTo(fx-3,55);
+    ctx.moveTo(fx+3,50); ctx.lineTo(fx+3,55); ctx.stroke();
+    ctx.strokeStyle = outline; ctx.lineWidth = OUTLINE_W;
+    ctx.restore();
+  });
+
+  // ---- body: flat orange with one soft shadow patch on the shaded side ----
+  ctx.fillStyle = fur;
+  ctx.beginPath(); ctx.ellipse(0, 37, 25, 20, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  shade(()=>{ ctx.beginPath(); ctx.ellipse(17,44,13,15,0.2,0,Math.PI*2); }, 0.5);
+
+  // creamy chest patch
+  ctx.fillStyle = cream;
+  ctx.beginPath(); ctx.ellipse(0, 44, 14.5, 11.5, 0, 0, Math.PI*2); ctx.fill();
+  shade(()=>{ ctx.beginPath(); ctx.ellipse(8,48,8,7,0,0,Math.PI*2); }, 0.28);
+
+  // ---- ears (perk up slightly on each flap) ----
+  function ear(sx){
+    ctx.save(); ctx.scale(sx,1); ctx.translate(0, -punch*5);
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.moveTo(17,-17); ctx.quadraticCurveTo(33,-34,31,-53); ctx.quadraticCurveTo(13,-42,4,-22);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = earIn;
+    ctx.beginPath();
+    ctx.moveTo(18,-23); ctx.quadraticCurveTo(27,-34,25,-45); ctx.quadraticCurveTo(13,-37,10,-25);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ear(-1); ear(1);
+
+  // ---- head: flat orange sphere, single shadow lobe lower-right for gentle roundness ----
+  ctx.fillStyle = fur;
+  ctx.beginPath(); ctx.arc(0,-2,28,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  shade(()=>{ ctx.beginPath(); ctx.arc(13,10,17,0,Math.PI*2); }, 0.32);
+
+  // small highlight fleck, top-left — just a touch of shine, not a full gradient dome
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath(); ctx.ellipse(-14,-16,7,4.5,-0.5,0,Math.PI*2); ctx.fill();
+
+  // muzzle / face mask
+  ctx.fillStyle = cream;
+  ctx.beginPath();
+  ctx.moveTo(-28,3);
+  ctx.bezierCurveTo(-30,16,-19,27,-9,28);
+  ctx.bezierCurveTo(-3,29,3,29,9,28);
+  ctx.bezierCurveTo(19,27,30,16,28,3);
+  ctx.bezierCurveTo(25,12,15,15,9,11);
+  ctx.bezierCurveTo(3,15,-3,15,-9,11);
+  ctx.bezierCurveTo(-15,15,-25,12,-28,3);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(36,16,5,0.6)'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-27,12); ctx.lineTo(-17,10);
+  ctx.moveTo(-28,17); ctx.lineTo(-19,16);
+  ctx.stroke();
+  ctx.strokeStyle = outline; ctx.lineWidth = OUTLINE_W;
+
+  // ---- big white sticker eyes with round black pupils (reference's signature look) ----
+  function eye(ex){
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.arc(ex, 2.5, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#241005';
+    ctx.beginPath(); ctx.arc(ex-0.5, 3.5, 5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ex-2.6, 1.2, 1.9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.arc(ex+1.8, 5, 1, 0, Math.PI*2); ctx.fill();
+  }
+  eye(-11); eye(11);
+
+  // nose
+  ctx.fillStyle = '#241005';
+  ctx.beginPath(); ctx.ellipse(0,9,4.4,3.2,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath(); ctx.ellipse(-1.5,7.8,1.1,0.7,0,0,Math.PI*2); ctx.fill();
+
+  // grinning mouth + tongue, matching the reference's happy open smile
+  ctx.strokeStyle = '#241005'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0,12); ctx.quadraticCurveTo(-1,18,-6,19);
+  ctx.moveTo(0,12); ctx.quadraticCurveTo(9,16,11,10);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-9,14); ctx.quadraticCurveTo(0,21,10,13); ctx.stroke();
+
+  ctx.fillStyle = '#FF8FA6';
+  ctx.beginPath();
+  ctx.moveTo(-3,15); ctx.quadraticCurveTo(-1,28,4,17); ctx.quadraticCurveTo(1,21,-3,15);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#D9576E'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = outline; ctx.lineWidth = OUTLINE_W;
+
+  // ---- aviator goggles: white frame, black strap, dark lens with a warm gold diagonal shine ----
+  ctx.save();
+  ctx.translate(0,-20);
+  ctx.strokeStyle = '#1c1c1c'; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-29,-2); ctx.lineTo(29,-2); ctx.stroke();
+
+  ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#1c1c1c'; ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.roundRect(-25,-12,50,19,10); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#D8D2C4'; ctx.fillRect(-3,-6,6,8);
+
+  function lens(lx){
+    ctx.fillStyle = '#111A24';
+    ctx.beginPath(); ctx.roundRect(lx,-8,16,15,6); ctx.fill();
+    ctx.strokeStyle = '#1c1c1c'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.fillStyle = '#D98A2B';
+    ctx.beginPath(); ctx.moveTo(lx+2,-6); ctx.lineTo(lx+9,-6); ctx.lineTo(lx+5,-1); ctx.lineTo(lx+2,-1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.ellipse(lx+4,-5,2,1,-0.4,0,Math.PI*2); ctx.fill();
+  }
+  lens(-20); lens(4);
+  ctx.restore();
+
+  // ---- red collar with a raised gold paw-print tag, matching the reference exactly ----
+  ctx.fillStyle = '#E8432E';
+  ctx.beginPath(); ctx.arc(0,26,18,0.06*Math.PI,0.94*Math.PI); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  shade(()=>{ ctx.beginPath(); ctx.arc(0,26,18,0.5*Math.PI,0.94*Math.PI); ctx.closePath(); }, 0.32);
+  ctx.fillStyle = '#5a5a5a'; ctx.fillRect(-3.5,29,7,6); ctx.strokeRect(-3.5,29,7,6);
+
+  ctx.fillStyle = '#F2B93A';
+  ctx.beginPath(); ctx.arc(0,41,8,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath(); ctx.ellipse(-3,38,2.4,1.4,-0.5,0,Math.PI*2); ctx.fill();
+  // tiny paw print on the tag
+  ctx.fillStyle = '#241005';
+  ctx.beginPath(); ctx.ellipse(0,42.5,2.4,2,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-2.8,39,1.15,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0,37.8,1.15,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2.8,39,1.15,0,Math.PI*2); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawShiba(x, y, rot, punch){
+  punch = punch || 0;
+  ctx.save();
+
+  // ground contact shadow, stays anchored to world position (not rotated with the dog) —
+  // cheap (one gradient fill), stays live/uncached like the motion-burst arcs below.
+  ctx.save();
+  ctx.translate(x, y + 47*DOG_SCALE);
+  ctx.scale(DOG_SCALE, 0.3*DOG_SCALE);
+  ctx.fillStyle = dogShadowGradient;
+  ctx.beginPath(); ctx.arc(0,0,31,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // quick motion-burst arcs on flap — a few fading strokes trailing below, world-space so they
+  // don't spin with the dog's rotation; gives the tap a punchy, felt sense of lift
+  if (punch > 0.04){
+    ctx.save();
+    ctx.globalAlpha = punch * 0.55;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (let i=0;i<3;i++){
+      const yy = y + (26 + i*10) * DOG_SCALE;
+      const spread = (12 + i*5) * DOG_SCALE;
+      ctx.beginPath();
+      ctx.moveTo(x - spread, yy);
+      ctx.lineTo(x + spread, yy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // the character itself: cached bitmap blit instead of ~90 live draw calls — see
+  // getShibaSprite() above for why. DOG_SCALE and rotation stay live (drawImage happily
+  // goes through the current transform), only the punch-driven squash/stretch + ear/paw
+  // pose are baked into the cached sprite.
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(DOG_SCALE, DOG_SCALE);
+  const sprite = getShibaSprite(punch);
+  ctx.drawImage(sprite, -SHIBA_SPRITE_HALF, -SHIBA_SPRITE_HALF, SHIBA_SPRITE_SIZE, SHIBA_SPRITE_SIZE);
+
+  ctx.restore();
+}
+
+// Perf: this gradient's stops and coordinates never change (W/H are fixed constants), so
+// building it fresh every frame was wasted work — cache it once and reuse.
+const groundGradient = (function(){
+  const g = ctx.createLinearGradient(0,H-26,0,H);
+  g.addColorStop(0,'#C8E6A0'); g.addColorStop(1,'#9CCB6B');
+  return g;
+})();
+function drawGround(){
+  ctx.fillStyle = groundGradient; ctx.fillRect(0, H-26, W, 26);
+  // horizon outline tinted from the ground's own green instead of the universal brown,
+  // so it reads as part of the grass rather than a mismatched line laid on top of it
+  ctx.strokeStyle = darkenColor('#9CCB6B', 0.55); ctx.lineWidth = OUTLINE_W; ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.moveTo(0,H-26); ctx.lineTo(W,H-26); ctx.stroke();
+}
+
+function update(){
+  frame++;
+  flapPunch *= 0.86; if (flapPunch < 0.02) flapPunch = 0;
+  clouds.forEach(c=>{ c.x -= c.sp; if (c.x < -40) c.x = W+40; });
+  mountains.forEach(m=>{ m.x -= 0.35; if (m.x < -m.w) m.x = W + Math.random()*40; });
+
+  if (state === 'playing'){
+    autopilotStep();
+    dog.vy += GRAVITY; dog.y += dog.vy;
+    const targetRot = Math.max(-0.5, Math.min(1.1, dog.vy/10));
+    dog.rot += (targetRot - dog.rot) * 0.28; // smoothed toward target instead of snapping — feels much less jittery
+
+    if (dog.y - dog.r < 0){ dog.y = dog.r; dog.vy = 0; }
+    if (dog.y + dog.r > H-26){ dog.y = H-26-dog.r; endGame(); }
+
+    pipeTimer++;
+    if (pipeTimer > 100){ spawnPipe(); pipeTimer = 0; }
+
+    pipes.forEach(p=>{
+      p.x -= speed;
+      if (p.moving){
+        const raw = p.baseGapY + Math.sin((frame - p.spawnFrame) * p.oscSpeed) * p.oscAmp;
+        p.gapY = Math.max(80 + PIPE_GAP/2, Math.min(H - 26 - 80 - PIPE_GAP/2, raw));
+      }
+      if (!p.passed && p.x + PIPE_W < dog.x - dog.r){
+        p.passed = true; score++; totalPipes++;
+        if (p.bull){ bullPassed++; coins += 1; refreshTopBar(); } // bull candles now actually matter: +1 bonus $DOGZ
+        liveScore.textContent = score;
+        sfxScore();
+        if (score % 5 === 0 && speed < 7) speed += 0.3;
+      }
+      const withinX = dog.x + dog.r*0.7 > p.x && dog.x - dog.r*0.7 < p.x + PIPE_W;
+      if (withinX){
+        const topEdge = p.gapY - PIPE_GAP/2, botEdge = p.gapY + PIPE_GAP/2;
+        if (dog.y - dog.r*0.7 < topEdge || dog.y + dog.r*0.7 > botEdge){
+          if (state === 'playing') endGame();
+        }
+      }
+    });
+    pipes = pipes.filter(p => p.x > -PIPE_W-10);
+  } else {
+    dog.y = H/2 + Math.sin(frame*0.05)*10;
+    dog.rot = Math.sin(frame*0.05)*0.15;
+  }
+}
+
+// ---- subtle grain overlay ----
+// Pure flat-vector rendering with zero texture is one of the biggest tells of a "cheap"
+// look, even when every individual shape is well drawn. A faint grain layer breaks up
+// the flat color fields without touching any of the illustration work above — built once
+// as a small tile and repeated, so it costs almost nothing per frame.
+const grainCanvas = document.createElement('canvas');
+grainCanvas.width = 128; grainCanvas.height = 128;
+(function buildGrain(){
+  const gctx = grainCanvas.getContext('2d');
+  const imgData = gctx.createImageData(128, 128);
+  for (let i = 0; i < imgData.data.length; i += 4){
+    const v = Math.floor(Math.random() * 255);
+    imgData.data[i] = v; imgData.data[i+1] = v; imgData.data[i+2] = v; imgData.data[i+3] = 255;
+  }
+  gctx.putImageData(imgData, 0, 0);
+})();
+const grainPattern = ctx.createPattern(grainCanvas, 'repeat');
+function drawGrain(){
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  // Was 'overlay' — correct-looking but one of the priciest composite modes in Canvas 2D
+  // (per-pixel conditional blend against the destination), paid every single frame for a
+  // texture that never itself changes. 'source-over' (the default) is a plain alpha blend
+  // that's dramatically cheaper and near-identical at this low an opacity — can't skip
+  // drawing it on some frames instead, since render() clearRect()s the whole canvas every
+  // frame, so a skipped frame would flicker the grain in and out rather than reuse it.
+  ctx.fillStyle = grainPattern;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  clouds.forEach(drawCloud);
+  drawMountains();
+  drawChartGrid();
+  pipes.forEach(drawPipe);
+  drawGround();
+  drawShiba(dog.x, dog.y, dog.rot, flapPunch);
+  drawGrain();
+}
+
+function loop(now){
+  // Fixed-timestep accumulator: decouples simulation speed from the device's actual display
+  // refresh rate (previously update() ran once per raw requestAnimationFrame call with no
+  // time scaling, so the game ran genuinely faster on a 120Hz phone than a 60Hz one). Now
+  // exactly one physics step happens per FIXED_STEP_MS of real elapsed time, however many —
+  // zero, one, or several — rAF callbacks that takes. This is also what makes the flap
+  // timestamps sent to /api/run/submit replayable server-side: see physics.js.
+  if (lastRafTime === null) lastRafTime = now;
+  let delta = now - lastRafTime;
+  lastRafTime = now;
+  if (delta > 250) delta = 250; // clamp a huge gap (tab backgrounded, device hiccup) instead of doing hundreds of catch-up steps at once
+  simAccumulatorMs += delta;
+  while (simAccumulatorMs >= FIXED_STEP_MS){
+    update();
+    simAccumulatorMs -= FIXED_STEP_MS;
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ===================== MENUS ===================== */
+const modalBackdrop = document.getElementById('modalBackdrop');
+const modalPanel = document.getElementById('modalPanel');
+const navBtns = document.querySelectorAll('.navBtn');
+
+function coinIcon(){ return '<span class="dogzCoin">D</span>'; }
+
+function setActiveNav(name){
+  navBtns.forEach(b => {
+    const isActive = b.dataset.panel === name;
+    b.classList.toggle('active', isActive);
+    if (isActive) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+}
+
+navBtns.forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const p = btn.dataset.panel;
+    if (p === 'home'){ setActiveNav('home'); closeModal(); return; }
+    setActiveNav(p);
+    openModal(p);
+  });
+});
+
+function closeModal(){ modalBackdrop.classList.remove('show'); setActiveNav('home'); }
+modalBackdrop.addEventListener('click', (e)=>{ if (e.target === modalBackdrop) closeModal(); });
+// Escape-to-close: standard expected behavior for any element marked role="dialog"/aria-modal.
+window.addEventListener('keydown', (e)=>{
+  if (e.code === 'Escape' && modalBackdrop.classList.contains('show')) closeModal();
+});
+
+async function openModal(kind){
+  if (kind === 'leaderboard'){
+    if (usingBackend){
+      const res = await apiCall('/api/leaderboard', { initData: tg.initData });
+      if (res){ leaderboardEntries = res.leaderboard || []; myRank = res.myRank || null; }
+    } else {
+      try{
+        const res = await storage.get('global-leaderboard', true);
+        if (res && res.value) leaderboardEntries = JSON.parse(res.value);
+      } catch(e){}
+    }
+  }
+  if (kind === 'wallet' && usingBackend){
+    // Server is the sole source of truth for the ledger — refetch the first page every time
+    // the panel opens rather than trusting whatever this client happened to accumulate
+    // locally. Older pages are fetched on demand via "Load more" (see loadMoreWalletTx()).
+    const res = await apiCall('/api/wallet', { initData: tg.initData });
+    if (res){
+      coins = res.coins;
+      walletTransactions = res.transactions || [];
+      walletHasMore = !!res.hasMore;
+      refreshTopBar();
+    }
+  }
+  modalPanel.innerHTML = renderers[kind]();
+  modalBackdrop.classList.add('show');
+  attachPanelEvents(kind);
+}
+
+// Fetches the next older page of wallet transactions and appends it (backend mode only —
+// local/offline mode has no server-side pages to page through, it just shows everything
+// stored on-device up to MAX_LOCAL_WALLET_ENTRIES).
+async function loadMoreWalletTx(){
+  if (!usingBackend || walletLoadingMore || !walletHasMore || walletTransactions.length === 0) return;
+  walletLoadingMore = true;
+  const oldest = walletTransactions[walletTransactions.length - 1];
+  const res = await apiCall('/api/wallet', { initData: tg.initData, beforeId: oldest.id });
+  walletLoadingMore = false;
+  if (res){
+    walletTransactions = walletTransactions.concat(res.transactions || []);
+    walletHasMore = !!res.hasMore;
+    modalPanel.innerHTML = renderers.wallet();
+    attachPanelEvents('wallet');
+  }
+}
+
+// Telegram display names (first_name/last_name/username) are player-controlled text that
+// gets rendered straight into innerHTML on the leaderboard and profile — without escaping,
+// a name like `<img src=x onerror=...>` would execute in every other player's browser who
+// views the leaderboard. Escape before interpolating anywhere untrusted text meets innerHTML.
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[ch]));
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=> t.classList.remove('show'), 1600);
+}
+
+/* ---- Missions ---- */
+const missions = [
+  { id:'score',    label:'Score 10 points in a single run', target:10, progress:0, reward:50,  claimed:false, metric:'best' },
+  { id:'play',     label:'Play 3 games', target:3, progress:0, reward:30, claimed:false, metric:'sum' },
+  { id:'pipes',    label:'Fly through 15 candle gaps total', target:15, progress:0, reward:60, claimed:false, metric:'best' },
+  { id:'bull',     label:'Clear 5 green (bull) candles in a single run', target:5, progress:0, reward:70, claimed:false, metric:'best' },
+  { id:'highscore',label:'Score 20 points in a single run', target:20, progress:0, reward:100, claimed:false, metric:'best' },
+  { id:'marathon', label:'Play 8 games total', target:8, progress:0, reward:80, claimed:false, metric:'sum' },
+];
+
+/* ---- Permanent social missions ----
+   Unlike `missions` above, these never reset and pay out once per player, ever. The
+   server (see /api/social/open + /api/social/claim in server.js) is the sole authority
+   on whether a claim is actually valid — this client-side object only mirrors what it
+   last reported, the same way `missions` does for daily missions. */
+const socialMissions = [
+  { id:'follow_x',      type:'x',        label:'Follow @doggiezenfam on X', url:'https://x.com/doggiezenfam', reward:10000, opened:false, verified:false, claimed:false, tweetText:'' },
+  { id:'join_telegram', type:'telegram', label:'Join the DoggieZen Telegram channel', url:'https://t.me/doggiezen', reward:10000, opened:false, verified:false, claimed:false, tweetText:'' },
+];
+
+// Local-only progress update, used in offline/preview mode. In backend mode, progress is
+// computed and stored server-side inside /api/run/submit — the client just displays what
+// the server returns, it never decides its own mission progress for real players.
+function updateMissionProgressLocal(id, value){
+  const m = missions.find(x => x.id === id);
+  if (!m || m.claimed) return;
+  if (m.metric === 'sum') m.progress += value;
+  else m.progress = Math.max(m.progress, value);
+  m.progress = Math.min(m.progress, m.target);
+}
+
+async function claimMission(id){
+  const m = missions.find(x => x.id === id);
+  if (!m || m.claimed || m.progress < m.target) return;
+
+  if (usingBackend){
+    const res = await apiCall('/api/missions/claim', { initData: tg.initData, missionId: id });
+    if (res){
+      coins = res.player.coins;
+      missions.forEach(mm=>{
+        mm.progress = (res.player.missions && res.player.missions.progress[mm.id]) || 0;
+        mm.claimed = !!(res.player.missions && res.player.missions.claimed[mm.id]);
+      });
+      applyZenPassFromPlayer(res.player);
+      applyAutoPilotFromPlayer(res.player);
+      refreshTopBar();
+      toast('+' + m.reward + ' $DOGZ claimed');
+      openModal('missions');
+      return;
+    }
+    // backend call failed — don't fake a claim locally, the reward wouldn't be real
+    return;
+  }
+
+  m.claimed = true;
+  coins += m.reward;
+  logWalletTransactionLocal(m.reward, 'mission', `Mission reward — ${m.label}`);
+  refreshTopBar();
+  saveMissionsLocal();
+  savePlayerDataLocal();
+  toast('+' + m.reward + ' $DOGZ claimed');
+  openModal('missions');
+}
+
+/* ---- Social missions (follow X / join Telegram) ----
+   These pay out for real only when usingBackend is true — the server is the only thing
+   that can actually verify a Telegram join, and is the only thing allowed to grant $DOGZ.
+   In local preview mode there's nothing to verify against, so we open the link but never
+   fake a reward. */
+async function openSocialMission(id){
+  const m = socialMissions.find(x => x.id === id);
+  if (!m || m.claimed) return;
+  // Use Telegram's own navigation APIs when running inside the Mini App — more reliable
+  // there than a plain window.open, which some in-app webviews block or mishandle.
+  if (tg && id === 'join_telegram' && tg.openTelegramLink){
+    tg.openTelegramLink(m.url);
+  } else if (tg && tg.openLink){
+    tg.openLink(m.url);
+  } else {
+    window.open(m.url, '_blank', 'noopener');
+  }
+  m.opened = true;
+  if (usingBackend){
+    // For tweet-verified missions the server hands back the exact text to post (with this
+    // player's one-time verification code baked in) — see tweetText in server.js.
+    const res = await apiCall('/api/social/open', { initData: tg.initData, missionId: id });
+    if (res){
+      if (res.tweetText) m.tweetText = res.tweetText;
+      const o = res.player.social && res.player.social.opened[id];
+      m.verified = !!(o && o.verified);
+    }
+  }
+  openModal('missions');
+}
+
+// Verifies a follow_x claim: the player pastes back the URL of the tweet they posted
+// containing their code, and the server checks it's a real, public post via X's oEmbed
+// endpoint (see /api/social/verify-tweet in server.js). This doesn't claim the reward by
+// itself — it just unlocks the Claim button, same two-step shape as join_telegram's
+// open-then-claim flow.
+async function verifyTweetMission(id){
+  const m = socialMissions.find(x => x.id === id);
+  if (!m || m.claimed) return;
+  const input = document.getElementById('tweetUrlInput-' + id);
+  const tweetUrl = input ? input.value.trim() : '';
+  if (!tweetUrl){ toast('Paste the link to your tweet first'); return; }
+  if (!usingBackend){ toast('Open DoggieZen inside Telegram to verify and claim this reward'); return; }
+
+  const res = await apiCall('/api/social/verify-tweet', { initData: tg.initData, missionId: id, tweetUrl });
+  if (res){
+    const o = res.player.social && res.player.social.opened[id];
+    m.verified = !!(o && o.verified);
+    toast(m.verified ? 'Post verified — you can claim now' : "Couldn't verify that post");
+    openModal('missions');
+    return;
+  }
+  toast("Couldn't verify that post — make sure it's public and includes your exact code");
+}
+
+async function claimSocialMission(id){
+  const m = socialMissions.find(x => x.id === id);
+  if (!m || m.claimed) return;
+
+  if (usingBackend){
+    const res = await apiCall('/api/social/claim', { initData: tg.initData, missionId: id });
+    if (res){
+      coins = res.player.coins;
+      socialMissions.forEach(sm=>{
+        const o = res.player.social && res.player.social.opened[sm.id];
+        sm.opened = !!o;
+        sm.verified = !!(o && o.verified);
+        sm.claimed = !!(res.player.social && res.player.social.claimed[sm.id]);
+      });
+      applyZenPassFromPlayer(res.player);
+      applyAutoPilotFromPlayer(res.player);
+      refreshTopBar();
+      toast('+' + m.reward + ' $DOGZ claimed');
+      openModal('missions');
+      return;
+    }
+    toast("Not yet — open the link first, then try again in a few seconds");
+    return;
+  }
+
+  toast('Open DoggieZen inside Telegram to verify and claim this reward');
+}
+
+/* ---- Zen Pass (TonConnect wallet + on-chain TON payment) ----
+   Buying a tier is a 3-step round trip:
+   1. /api/zenpass/purchase/init — server decides price/tier, hands back a paymentId
+   2. tonConnectUI.sendTransaction — the player approves the TON transfer in their wallet
+   3. /api/zenpass/purchase/confirm — polled until the server sees the payment land on-chain
+   The server (server.js) is the sole authority on tier/price; nothing here is trusted. */
+
+function ensureTonConnectUI(){
+  if (tonConnectUI) return tonConnectUI;
+  if (!window.TON_CONNECT_UI){
+    toast("Wallet connector didn't load — check your connection and reopen the app");
+    return null;
+  }
+  tonConnectUI = new window.TON_CONNECT_UI.TonConnectUI({ manifestUrl: TONCONNECT_MANIFEST_URL });
+  return tonConnectUI;
+}
+
+async function connectZenPassWallet(){
+  const ui = ensureTonConnectUI();
+  if (!ui) return;
+  try{
+    // openModal() shows TonConnect's own wallet picker (Telegram Wallet, Tonkeeper, etc.)
+    // and resolves once the player has approved the connection.
+    await ui.openModal();
+  } catch(e){
+    // Player closed the picker without connecting — not an error worth surfacing.
+    return;
+  }
+  const wallet = ui.wallet || (ui.connector && ui.connector.wallet);
+  if (wallet && wallet.account && wallet.account.address){
+    zenPass = { ...zenPass, walletAddress: wallet.account.address };
+    openModal('passes');
+  }
+}
+
+async function disconnectZenPassWallet(){
+  const ui = ensureTonConnectUI();
+  if (!ui) return;
+  try{ await ui.disconnect(); } catch(e){ /* already disconnected — fine */ }
+  zenPass = { ...zenPass, walletAddress: null };
+  openModal('passes');
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+async function buyZenPassTier(tier){
+  const ui = ensureTonConnectUI();
+  if (!ui) return;
+  let wallet = ui.wallet || (ui.connector && ui.connector.wallet);
+  if (!wallet || !wallet.account || !wallet.account.address){
+    // Not connected yet — per the requested flow, buying automatically prompts connect first.
+    await connectZenPassWallet();
+    wallet = ui.wallet || (ui.connector && ui.connector.wallet);
+    if (!wallet || !wallet.account || !wallet.account.address) return; // player backed out
+  }
+
+  const init = await apiCall('/api/zenpass/purchase/init', {
+    initData: tg.initData,
+    walletAddress: wallet.account.address,
+  });
+  if (!init) return; // apiCall already toasted the error
+  if (init.tier !== tier){
+    // Someone else's purchase (or a stale UI) changed the next tier under us — refresh and stop.
+    applyZenPassFromPlayer({ zenPass: { ...zenPass } });
+    openModal('passes');
+    toast('Your Zen Pass tier changed — check the panel and try again');
+    return;
+  }
+
+  let txResult;
+  try{
+    txResult = await ui.sendTransaction({
+      validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes to approve in-wallet
+      messages: [{ address: init.toAddress, amount: init.amountNanoTon }],
+    });
+  } catch(e){
+    toast('Payment cancelled or failed in your wallet');
+    return;
+  }
+  if (!txResult) return;
+
+  toast(`Menunggu konfirmasi pembayaran ${init.priceTon} TON di blockchain…`);
+  // Block confirmation isn't instant — poll a handful of times with a short delay rather
+  // than treating one miss as failure. See /api/zenpass/purchase/confirm in server.js.
+  const MAX_ATTEMPTS = 12;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++){
+    await sleep(4000);
+    const confirm = await apiCall('/api/zenpass/purchase/confirm', {
+      initData: tg.initData,
+      paymentId: init.paymentId,
+    });
+    if (!confirm) return; // apiCall already toasted the error
+    if (!confirm.pending){
+      applyZenPassFromPlayer(confirm.player);
+      coins = confirm.player.coins;
+      refreshTopBar();
+      toast(`Zen Pass upgraded to x${init.multiplier}!`);
+      openModal('passes');
+      return;
+    }
+  }
+  toast('Payment not confirmed yet — check back later in the Zen Pass menu');
+}
+
+async function buyAutoPilot(){
+  if (autoPilot){ toast('Auto Pilot is already active'); return; }
+  const ui = ensureTonConnectUI();
+  if (!ui) return;
+  let wallet = ui.wallet || (ui.connector && ui.connector.wallet);
+  if (!wallet || !wallet.account || !wallet.account.address){
+    // Not connected yet — same as Zen Pass tiers: buying automatically prompts connect first.
+    await connectZenPassWallet();
+    wallet = ui.wallet || (ui.connector && ui.connector.wallet);
+    if (!wallet || !wallet.account || !wallet.account.address) return; // player backed out
+  }
+
+  const init = await apiCall('/api/autopilot/purchase/init', {
+    initData: tg.initData,
+    walletAddress: wallet.account.address,
+  });
+  if (!init) return; // apiCall already toasted the error
+
+  let txResult;
+  try{
+    txResult = await ui.sendTransaction({
+      validUntil: Math.floor(Date.now() / 1000) + 300, // 5 minutes to approve in-wallet
+      messages: [{ address: init.toAddress, amount: init.amountNanoTon }],
+    });
+  } catch(e){
+    toast('Payment cancelled or failed in your wallet');
+    return;
+  }
+  if (!txResult) return;
+
+  toast(`Menunggu konfirmasi pembayaran ${init.priceTon} TON di blockchain…`);
+  // Block confirmation isn't instant — poll a handful of times with a short delay rather
+  // than treating one miss as failure. See /api/autopilot/purchase/confirm in server.js.
+  const MAX_ATTEMPTS = 12;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++){
+    await sleep(4000);
+    const confirm = await apiCall('/api/autopilot/purchase/confirm', {
+      initData: tg.initData,
+      paymentId: init.paymentId,
+    });
+    if (!confirm) return; // apiCall already toasted the error
+    if (!confirm.pending){
+      applyAutoPilotFromPlayer(confirm.player);
+      coins = confirm.player.coins;
+      refreshTopBar();
+      toast('Auto Pilot active! The dog will fly itself from your next run.');
+      openModal('passes');
+      return;
+    }
+  }
+  toast('Payment not confirmed yet — check back later in the Zen Pass menu');
+}
+
+/* ---- Leaderboard ---- */
+// Global leaderboard, shared across everyone playing this artifact (via window.storage, shared:true).
+let leaderboardEntries = [];
+
+/* ---- Referral ----
+   Referral code = your own Telegram ID, used as ?startapp= in the t.me link.
+   When someone else opens the Mini App through this link, Telegram automatically
+   populates tg.initDataUnsafe.start_param with that code (see initTelegramIdentity),
+   and /api/state sends it to the server on first load. The server — not this client —
+   decides whether to record the referral and credit the referrer, after verifying the
+   new player's initData. referredFriends and referredBy below are just a display of
+   whatever the server most recently reported. */
+const referralCode = tgId;
+const referralLink = `https://t.me/${TELEGRAM_BOT_USERNAME}/${TELEGRAM_APP_SHORT_NAME}?startapp=${referralCode}`;
+let referredFriends = 0;
+let referredBy = null;
+
+/* ---- Renderers ---- */
+const renderers = {
+  missions(){
+    const socialRows = socialMissions.map(m=>{
+      let action;
+      if (m.claimed){
+        action = '';
+      } else if (m.type === 'x' && m.opened && !m.verified){
+        // follow_x, opened but not yet verified: show the exact text to post + a place to
+        // paste the resulting tweet URL. Claim stays locked until verify-tweet succeeds.
+        action = `
+          <div class="tweetBox">
+            <div class="subtext" style="margin-bottom:6px;">Post this on X, then paste the link below:</div>
+            <div class="tweetText">${m.tweetText || 'Tap Open X to get your code'}</div>
+            <input type="text" class="tweetUrlInput" id="tweetUrlInput-${m.id}" placeholder="https://x.com/you/status/...">
+            <div class="cardBtns" style="margin-top:10px;">
+              <button class="smallBtn secondary" style="flex:1" data-social-open="${m.id}">Open X</button>
+              <button class="smallBtn" style="flex:1" data-social-verify="${m.id}">Verify Post</button>
+            </div>
+          </div>`;
+      } else if (m.opened){
+        const claimLabel = m.type === 'x' ? 'Claim' : 'Verify &amp; Claim';
+        action = `<div class="cardBtns" style="margin-top:10px;">
+          <button class="smallBtn secondary" style="flex:1" data-social-open="${m.id}">Open Again</button>
+          <button class="smallBtn" style="flex:1" data-social-claim="${m.id}">${claimLabel}</button>
+        </div>`;
+      } else {
+        action = `<button class="smallBtn" style="margin-top:10px;width:100%" data-social-open="${m.id}">Open</button>`;
+      }
+      return `
+        <div class="row">
+          <div class="missionTop">
+            <b>${m.label}</b>
+            <span class="badge ${m.claimed?'done':''}">${m.claimed?'Claimed':'One-time'}</span>
+          </div>
+          <div class="missionReward">${coinIcon()} Reward: ${m.reward.toLocaleString()} $DOGZ</div>
+          ${action}
+        </div>`;
+    }).join('');
+    const rows = missions.map(m=>{
+      const pct = Math.min(100, Math.round(m.progress/m.target*100));
+      const ready = m.progress >= m.target && !m.claimed;
+      return `
+        <div class="row">
+          <div class="missionTop">
+            <b>${m.label}</b>
+            <span class="badge ${m.claimed?'done':''}">${m.claimed?'Claimed':(m.progress+'/'+m.target)}</span>
+          </div>
+          <div class="missionBarOuter"><div class="missionBarInner" style="width:${pct}%"></div></div>
+          <div class="missionReward">${coinIcon()} Reward: ${m.reward} $DOGZ</div>
+          ${ready ? `<button class="smallBtn" style="margin-top:10px;width:100%" data-claim="${m.id}">Claim Reward</button>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-target"/></svg></span>Daily Missions</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+      ${socialRows}
+      ${rows}`;
+  },
+  passes(){
+    if (!usingBackend){
+      return `
+        <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-ticket"/></svg></span>Zen Pass</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+        <div class="row" style="text-align:center;color:var(--mist-dim);padding:28px 14px;">
+          Open DoggieZen inside Telegram to connect a wallet and buy Zen Pass.
+        </div>`;
+    }
+    const walletConnected = !!zenPass.walletAddress;
+    const shortAddr = walletConnected
+      ? zenPass.walletAddress.slice(0,4) + '…' + zenPass.walletAddress.slice(-4)
+      : '';
+    const statusRow = zenPass.tier > 0
+      ? `<div class="rewardRow">${coinIcon()} Zen Pass active — all gameplay, mission &amp; referral coins pay x${zenPass.multiplier}</div>`
+      : `<div class="row" style="text-align:center;color:var(--mist-dim);">No Zen Pass yet — buy tier 1 below to start earning x2 coins.</div>`;
+
+    const walletRow = walletConnected
+      ? `<div class="row passRow"><div class="lvl" aria-hidden="true"><svg style="width:20px;height:20px"><use href="#i-wallet"/></svg></div>
+           <div class="info"><b>Wallet connected</b><span>${shortAddr}</span></div>
+           <button class="smallBtn secondary" id="zenPassDisconnectBtn" style="flex:0 0 auto;padding:9px 14px;">Disconnect</button>
+         </div>`
+      : `<div class="row" style="text-align:center;">
+           <button class="bigBtn" id="zenPassConnectBtn" style="width:100%;">Connect Telegram Wallet</button>
+         </div>`;
+
+    const tierRows = ZEN_PASS_TIERS.map(t=>{
+      const owned = zenPass.tier >= t.tier;
+      const isNext = zenPass.tier === t.tier - 1;
+      const locked = !owned && !isNext;
+      let action = '';
+      if (owned){
+        action = `<span class="badge done">Active</span>`;
+      } else if (isNext){
+        action = walletConnected
+          ? `<button class="smallBtn" style="flex:0 0 auto;padding:9px 14px;" data-buy-tier="${t.tier}">Buy — ${t.priceTon} TON</button>`
+          : `<span class="badge">${t.priceTon} TON</span>`;
+      } else {
+        action = `<span class="badge">${t.priceTon} TON</span>`;
+      }
+      return `
+        <div class="row passRow ${locked?'locked':''}">
+          <div class="lvl">x${t.multiplier}</div>
+          <div class="info"><b>x${t.multiplier} Coin Value</b><span>All gameplay, mission &amp; referral rewards pay x${t.multiplier}</span></div>
+          ${action}
+        </div>`;
+    }).join('');
+
+    const autoPilotRow = autoPilot
+      ? `<div class="row passRow">
+           <div class="lvl" aria-hidden="true"><svg style="width:20px;height:20px"><use href="#i-paw"/></svg></div>
+           <div class="info"><b>Auto Pilot</b><span>The dog flies itself — score &amp; coins collect with no taps needed</span></div>
+           <span class="badge done">Active</span>
+         </div>`
+      : `<div class="row passRow">
+           <div class="lvl" aria-hidden="true"><svg style="width:20px;height:20px"><use href="#i-paw"/></svg></div>
+           <div class="info"><b>Auto Pilot</b><span>The dog flies itself — score &amp; coins collect with no taps needed</span></div>
+           ${walletConnected
+             ? `<button class="smallBtn" style="flex:0 0 auto;padding:9px 14px;" id="buyAutoPilotBtn">Buy — ${AUTO_PILOT_PRICE_TON} TON</button>`
+             : `<span class="badge">${AUTO_PILOT_PRICE_TON} TON</span>`}
+         </div>`;
+
+    return `
+      <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-ticket"/></svg></span>Zen Pass</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+      ${statusRow}
+      ${walletRow}
+      ${tierRows}
+      ${autoPilotRow}
+      <div class="subtext" style="text-align:center;margin-top:4px;">Payments are verified on-chain on the TON network. Each tier replaces the previous one — buy in order.</div>`;
+  },
+  leaderboard(){
+    if (leaderboardEntries.length === 0){
+      return `
+        <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-trophy"/></svg></span>Leaderboard</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+        <div class="row" style="text-align:center;color:var(--mist-dim);padding:28px 14px;">
+          No flights logged yet. Be the first name on the board.
+        </div>`;
+    }
+    const rankClass = i => i===0?'g1':i===1?'g2':i===2?'g3':'';
+    const inTop = leaderboardEntries.some(p => p.tgId === tgId);
+    const rows = leaderboardEntries.map((p,i)=>`
+      <div class="row lbRow ${p.tgId === tgId ? 'me' : ''}">
+        <div class="lbRank ${rankClass(i)}">${i+1}</div>
+        <div class="lbAvatar" aria-hidden="true"><svg><use href="#i-dogface"/></svg></div>
+        <div class="lbName">${escapeHtml(p.name)}${p.tgId === tgId ? ' (you)' : ''}</div>
+        <div class="lbScore">${p.score}</div>
+      </div>`).join('');
+    // when the player isn't in the visible top list, show their own rank separately so they
+    // still have something to compare against instead of just vanishing off the board
+    const myRow = (!inTop && myRank && myRank.rank)
+      ? `<div class="row lbRow me">
+          <div class="lbRank">${myRank.rank}</div>
+          <div class="lbAvatar" aria-hidden="true"><svg><use href="#i-dogface"/></svg></div>
+          <div class="lbName">${escapeHtml(username)} (you)</div>
+          <div class="lbScore">${myRank.score}</div>
+        </div>`
+      : '';
+    return `
+      <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-trophy"/></svg></span>Leaderboard</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+      ${rows}
+      ${myRow}`;
+  },
+  referral(){
+    const referredNote = referredBy
+      ? `<div class="fineprint" style="color:var(--jade);margin-bottom:12px;">You joined via a friend's invite — thanks for flying in! 🐾</div>`
+      : '';
+    return `
+      <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-invite"/></svg></span>Invite Friends</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+      ${referredNote}
+      <div class="refBox">
+        <div class="subtext" style="margin-bottom:0;">Your invite link</div>
+        <div class="refCode" style="font-size:13px;letter-spacing:0;word-break:break-all;">${referralLink}</div>
+        <button class="smallBtn" id="shareLink" style="width:100%;margin-top:10px;">${tg ? 'Share via Telegram' : 'Copy Link'}</button>
+      </div>
+      <div class="statGrid">
+        <div class="row statBox"><b>${referredFriends}</b><span>Friends Invited</span></div>
+        <div class="row statBox"><b>${referredFriends*1000}</b><span>$DOGZ Earned</span></div>
+      </div>
+      <div class="fineprint">Anyone who opens DoggieZen through this link for the first time is credited as invited by you, and the reward is granted right away — verified server-side, not by the app on their phone.</div>`;
+  },
+  profile(){
+    const handle = tgUser && tgUser.username ? `@${escapeHtml(tgUser.username)}` : (tg ? 'No Telegram username set' : 'Not connected to Telegram');
+    return `
+      <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-dogface"/></svg></span>Profile</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+      <div class="profileHead">
+        ${tgUser && tgUser.photo_url
+          ? `<img src="${tgUser.photo_url}" style="width:60px;height:60px;border-radius:18px;object-fit:cover;flex-shrink:0;" referrerpolicy="no-referrer">`
+          : `<div class="avatarBig" aria-hidden="true"><svg><use href="#i-dogface"/></svg></div>`}
+        <div style="min-width:0;">
+          <div style="font-family:'Fredoka',sans-serif;font-weight:700;color:var(--paper);font-size:16px;">${escapeHtml(username)}</div>
+          <div style="font-size:12px;color:var(--mist-dim);margin-top:2px;">${handle}</div>
+        </div>
+      </div>
+      <div class="profileStats">
+        <div class="row pStat"><b>${best}</b><span>Best Score</span></div>
+        <div class="row pStat"><b>${gamesPlayed}</b><span>Games Played</span></div>
+        <div class="row pStat"><b>${coins}</b><span>$DOGZ</span></div>
+        <div class="row pStat"><b>${totalPipes}</b><span>Pipes Cleared</span></div>
+      </div>`;
+  },
+  wallet(){
+    const TX_ICONS = {
+      gameplay: '🎮', mission: '🎯', social_mission: '📣', daily_reward: '🔥', referral: '🐾',
+    };
+    const fmtDate = (ts)=>{
+      const d = new Date(ts);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const time = d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      return sameDay ? `Today, ${time}` : `${d.toLocaleDateString([], { month:'short', day:'numeric' })}, ${time}`;
+    };
+    const rows = walletTransactions.map(tx=>{
+      const positive = tx.amount >= 0;
+      return `
+        <div class="row txRow">
+          <div class="txIcon" aria-hidden="true">${TX_ICONS[tx.type] || '💰'}</div>
+          <div class="txInfo">
+            <b>${tx.description || 'Coin transaction'}</b>
+            <span>${fmtDate(tx.createdAt)}</span>
+          </div>
+          <div class="txAmount" style="${positive ? '' : 'color:var(--mist-dim);'}">${positive ? '+' : ''}${tx.amount.toLocaleString()}</div>
+        </div>`;
+    }).join('');
+    const empty = `
+      <div class="row" style="text-align:center;color:var(--mist-dim);padding:28px 14px;">
+        No transactions yet. Play a run, finish a mission, or claim your daily reward to start earning $DOGZ.
+      </div>`;
+    const loadMoreBtn = (usingBackend && walletHasMore)
+      ? `<button class="smallBtn secondary" id="walletLoadMore" style="width:100%;margin-top:4px;">${walletLoadingMore ? 'Loading…' : 'Load more'}</button>`
+      : '';
+    return `
+      <div class="modalHead"><h2 id="modalTitle"><span class="icBox" aria-hidden="true"><svg><use href="#i-wallet"/></svg></span>Wallet</h2><button class="closeX" id="xClose" aria-label="Close">✕</button></div>
+      <div class="walletBalanceBox">
+        <div class="subtext">Your balance</div>
+        <div class="walletBalanceRow">${coinIcon()}<b>${coins.toLocaleString()}</b></div>
+      </div>
+      <div class="walletSectionLabel">Transaction History</div>
+      ${walletTransactions.length ? rows : empty}
+      ${loadMoreBtn}`;
+  }
+};
+
+function attachPanelEvents(kind){
+  const xClose = document.getElementById('xClose');
+  if (xClose) xClose.addEventListener('click', closeModal);
+
+  if (kind === 'missions'){
+    modalPanel.querySelectorAll('[data-claim]').forEach(btn=>{
+      btn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, ()=> claimMission(btn.dataset.claim)));
+    });
+    modalPanel.querySelectorAll('[data-social-open]').forEach(btn=>{
+      btn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, ()=> openSocialMission(btn.dataset.socialOpen)));
+    });
+    modalPanel.querySelectorAll('[data-social-claim]').forEach(btn=>{
+      btn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, ()=> claimSocialMission(btn.dataset.socialClaim)));
+    });
+    modalPanel.querySelectorAll('[data-social-verify]').forEach(btn=>{
+      btn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, ()=> verifyTweetMission(btn.dataset.socialVerify)));
+    });
+  }
+  if (kind === 'referral'){
+    const shareBtn = document.getElementById('shareLink');
+    if (shareBtn) shareBtn.addEventListener('click', ()=>{
+      if (tg && tg.openTelegramLink){
+        const shareText = encodeURIComponent('Come fly with me on DoggieZen 🐕✨');
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${shareText}`);
+      } else {
+        navigator.clipboard?.writeText(referralLink).catch(()=>{});
+        toast('Invite link copied');
+      }
+    });
+  }
+  if (kind === 'profile'){
+    // profile is now read-only, driven by Telegram identity — nothing to attach here
+  }
+  if (kind === 'passes'){
+    const connectBtn = document.getElementById('zenPassConnectBtn');
+    if (connectBtn) connectBtn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, connectZenPassWallet));
+    const disconnectBtn = document.getElementById('zenPassDisconnectBtn');
+    if (disconnectBtn) disconnectBtn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, disconnectZenPassWallet));
+    modalPanel.querySelectorAll('[data-buy-tier]').forEach(btn=>{
+      btn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, ()=> buyZenPassTier(Number(btn.dataset.buyTier))));
+    });
+    const buyAutoPilotBtn = document.getElementById('buyAutoPilotBtn');
+    if (buyAutoPilotBtn) buyAutoPilotBtn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, buyAutoPilot));
+  }
+  if (kind === 'wallet'){
+    const loadMoreBtn = document.getElementById('walletLoadMore');
+    if (loadMoreBtn) loadMoreBtn.addEventListener('click', (e)=> withBtnLoading(e.currentTarget, loadMoreWalletTx));
+  }
+}
+
+/* ---- Page Visibility handling ----
+   BUG FIX: previously nothing here listened for visibilitychange at all. Two concrete
+   problems that caused:
+   1) The music scheduler (a setInterval ticking every 25ms, see musicSchedulerTick above)
+      kept running while the Mini App was backgrounded/minimized inside Telegram, burning
+      battery/CPU for audio nobody can hear.
+   2) In local/offline preview mode, if the player backgrounded the app (or Telegram killed
+      the WebView) before the next debounced save, whatever hadn't been saved yet could be
+      lost — this is the "save on background" requirement, not covered by the existing
+      save-after-meaningful-action calls alone.
+   The rAF loop itself doesn't need an explicit pause: browsers already stop firing
+   requestAnimationFrame callbacks for a hidden document, and the fixed-timestep
+   accumulator's delta clamp (`if (delta > 250) delta = 250` in loop()) plus resetting
+   lastRafTime here prevents a huge catch-up burst of physics steps on resume. */
+document.addEventListener('visibilitychange', ()=>{
+  if (document.visibilityState === 'hidden'){
+    stopMusic();
+    if (!usingBackend){
+      savePlayerDataLocal();
+      saveMissionsLocal();
+    }
+  } else {
+    lastRafTime = null; // avoid a big delta on the next frame turning into a catch-up burst
+    if (musicEnabled) startMusic();
+  }
+});
+// Safety net for local/offline mode: pagehide fires reliably on mobile (including Telegram's
+// WebView) when the app is closed/navigated away from, unlike beforeunload which mobile
+// browsers often skip entirely. visibilitychange above already covers the common
+// backgrounding case; this just guards the rarer path where the page is torn down without
+// a preceding visibility change.
+window.addEventListener('pagehide', ()=>{
+  if (!usingBackend){
+    savePlayerDataLocal();
+    saveMissionsLocal();
+  }
+});
+
+/* ===================== INIT ===================== */
+// Runs last, once everything above (missions, renderers, etc.) is declared.
+(async function init(){
+  render(); // draw one idle frame immediately so the canvas isn't blank while loading
+  try{
+    const stored = await storage.get('music-enabled', false);
+    if (stored && stored.value === '0') musicEnabled = false;
+  } catch(e){}
+  updateMusicToggleUI();
+  const musicToggleBtn = document.getElementById('musicToggleBtn');
+  if (musicToggleBtn) musicToggleBtn.addEventListener('click', toggleMusic);
+  await loadPlayerData();
+  loadingOverlay.style.display = 'none';
+  maybeShowDailyReward();
+  requestAnimationFrame(loop);
+})();
+
+/* ===================== ANTI-COPY / ANTI-SELECT ===================== */
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('selectstart', e => e.preventDefault());
+document.addEventListener('copy', e => e.preventDefault());
+document.addEventListener('cut', e => e.preventDefault());
+document.addEventListener('dragstart', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && ['c','x','a','u','s','p'].includes(k)) {
+    e.preventDefault();
+  }
+});
+</script>
+</body>
+</html>
